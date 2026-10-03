@@ -12,7 +12,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip --isolated install --require-hashes --only-binary=:all: -r src/twon20/templates/hyperliquid-python/requirements-runner.txt
 PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 cd src/twon20/templates/hyperliquid-python
-../../../../.venv/bin/python -m unittest discover -s tests -v
+PYTHONPATH=../../.. ../../../../.venv/bin/python -m unittest discover -s tests -v
 cd ../../../..
 SOURCE_DATE_EPOCH=1790985600 .venv/bin/python scripts/build_release.py
 .venv/bin/python -m pip --isolated install --no-deps dist/*.whl

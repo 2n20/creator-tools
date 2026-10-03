@@ -30,7 +30,7 @@ jobs:
           python -c 'import os,tomllib; v=tomllib.load(open("pyproject.toml","rb"))["project"]["version"]; assert os.environ["GITHUB_REF_NAME"] == "creator-cli-v" + v'
           PYTHONPATH=src python -m unittest discover -s tests -v
           cd src/twon20/templates/hyperliquid-python
-          python -m unittest discover -s tests -v
+          PYTHONPATH=../../.. python -m unittest discover -s tests -v
       - name: Build and verify installed artifacts
         env:
           SOURCE_DATE_EPOCH: '1790985600'

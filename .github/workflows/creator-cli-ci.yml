@@ -31,7 +31,7 @@ jobs:
         run: |
           PYTHONPATH=src python -m unittest discover -s tests -v
           cd src/twon20/templates/hyperliquid-python
-          python -m unittest discover -s tests -v
+          PYTHONPATH=../../.. python -m unittest discover -s tests -v
       - name: Build and verify installed artifacts
         env:
           SOURCE_DATE_EPOCH: '1790985600'
