@@ -6,23 +6,18 @@ Give your coding agent the `2n20-setup` skill, or run the `2n20` CLI yourself. R
 
 After approval, resume the same setup directory to verify trading access and get your strategy settings. You define and operate the strategy. The starter's moving-average example teaches the integration; it makes no profitability claim. The Python import is `twon20`.
 
-## Build and install
+## Install
 
-Use Python 3.10 or later. Build the exact reviewed source with the pinned dependency lock:
+Use Python 3.10 or later on your strategy computer or server:
 
 ```sh
-git clone https://github.com/2n20/creator-tools.git
-cd creator-tools
-python3 -m venv .venv
-.venv/bin/python -m pip --isolated install --require-hashes --only-binary=:all: -r requirements-release.txt
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
-SOURCE_DATE_EPOCH=1790985600 .venv/bin/python scripts/build_release.py
-.venv/bin/python -m pip --isolated install --no-deps dist/*.whl
-.venv/bin/2n20 --version
-source .venv/bin/activate
+python3 -m venv .venv-2n20
+source .venv-2n20/bin/activate
+python -m pip --isolated install '2n20==0.3.1'
+2n20 --version
 ```
 
-You install the Hyperliquid SDK with the starter's separate runner dependency lock. The base CLI needs no execution SDK. See the [release instructions](https://github.com/2n20/creator-tools/blob/main/docs/releases.md) for artifact checks and Trusted Publishing.
+You install the Hyperliquid SDK with the starter's separate runner dependency lock. The base CLI needs no execution SDK. See the [release instructions](https://github.com/2n20/creator-tools/blob/main/docs/releases.md) to build from source or check release artifacts.
 
 ## Start or connect a project
 
