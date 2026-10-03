@@ -132,7 +132,7 @@ def run(args):
                     guard.clear()
             finally:
                 journal.close()
-        code = 0 if result["stage"] in {"complete", "entry_rejected"} else 2
+        code = 0 if result["stage"] == "complete" else 2
         return result, code
     finally:
         access.close()

@@ -350,6 +350,24 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(code, 0)
         guard.clear.assert_not_called()
 
+    def test_unfilled_entry_returns_nonzero_without_resubmitting_on_resume(self):
+        adapter = FakeAdapter(self.journal, entry_fill="0")
+        access = Mock(); access.scope = SCOPE; access.directory = Path("/placeholder/setup"); access.vault = LINK
+        guard = Mock()
+        @contextlib.contextmanager
+        def lock(account): yield guard
+        argv = ["live-smoke", "--vault", LINK, "--directory", "/placeholder/setup",
+                "--state-directory", str(self.journal.output.path), "--market", "BTC", "--side", "buy",
+                "--max-notional", "12", "--slippage-bps", "20", "--duration-seconds", "30", "--execute", "LIVE_SMOKE"]
+        with patch("adapter.Access", return_value=access), patch("adapter.Adapter", return_value=adapter), patch("journal.account_lock", side_effect=lock), patch("journal.Journal", return_value=self.journal), patch.object(self.journal, "close"):
+            for _ in range(2):
+                result, code = run(parser().parse_args(argv))
+                self.assertEqual(result["stage"], "entry_rejected")
+                self.assertEqual(code, 2, "No fill is not a successful trading test")
+        self.assertEqual(len(adapter.calls), 1)
+        self.assertEqual(self.journal.read(SMOKE)["phase"], "entry_rejected")
+        self.assertEqual(guard.clear.call_count, 2)
+
     def test_journal_permissions_atomic_updates_and_symlink_refusal(self):
         self.journal.save(SMOKE, {"phase": "fixture"})
         path = Path(self.journal.public_path(SMOKE))
