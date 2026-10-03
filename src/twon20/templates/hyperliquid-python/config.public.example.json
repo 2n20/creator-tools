@@ -1,0 +1,11 @@
+{
+  "schema": "2n20-starter-public-example-v1",
+  "mode": "paper",
+  "vaultUrl": "https://2n20.org/vaults/<VAULT_ADDRESS>",
+  "setupDirectory": "<EXISTING_SETUP_DIRECTORY>",
+  "market": "BTC",
+  "strategy": "educational-moving-average-crossover",
+  "fastPeriods": 3,
+  "slowPeriods": 5,
+  "note": "Public placeholders only. Use CLI-verified settings and explicit runtime arguments; never put keys in this file."
+}

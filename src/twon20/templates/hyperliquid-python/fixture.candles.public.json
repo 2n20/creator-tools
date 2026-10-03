@@ -1,0 +1,5 @@
+{
+  "schema": "2n20-educational-candles-v1",
+  "description": "Invented deterministic closes for a finite educational paper demonstration.",
+  "closes": [100, 99, 98, 97, 96, 97, 100, 104, 106, 104, 100, 96, 94, 96, 100, 103]
+}

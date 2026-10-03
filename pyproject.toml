@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "2n20"
+version = "0.3.0"
+description = "Local setup, public connection checks and a strategy starter for 2n20 creators"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "2n20"}]
+# Pin the complete eth-account runtime graph so installs retain the reviewed
+# release set. Hashes and registry timestamps are in requirements-release.txt.
+dependencies = [
+  "annotated-types==0.8.0",
+  "bitarray==3.11.0",
+  "ckzg==2.1.8",
+  "cytoolz==1.1.0",
+  "eth-account==0.13.7",
+  "eth-hash==0.8.0",
+  "eth-keyfile==0.8.1",
+  "eth-keys==0.8.0",
+  "eth-rlp==3.0.0",
+  "eth-typing==6.0.0",
+  "eth-utils==5.3.1",
+  "eth_abi==6.0.0",
+  "hexbytes==2.0.0",
+  "parsimonious==0.10.0",
+  "pycryptodome==3.23.0",
+  "pydantic==2.13.5",
+  "pydantic_core==2.46.5",
+  "regex==2026.9.10",
+  "rlp==5.0.0",
+  "toolz==1.1.0",
+  "typing-inspection==0.4.4",
+  "typing_extensions==4.16.0",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://2n20.org"
+Documentation = "https://2n20.org/docs/quickstart"
+Repository = "https://github.com/2n20/creator-tools"
+Issues = "https://github.com/2n20/creator-tools/issues"
+
+[project.scripts]
+2n20 = "twon20.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+twon20 = [
+  "deployments.json",
+  "skills/2n20-setup/SKILL.md",
+  "templates/hyperliquid-python/*.py",
+  "templates/hyperliquid-python/*.md",
+  "templates/hyperliquid-python/*.public.json",
+  "templates/hyperliquid-python/config.public.example.json",
+  "templates/hyperliquid-python/requirements-runner.txt",
+  "templates/hyperliquid-python/dependency-review.json",
+  "templates/hyperliquid-python/.gitignore",
+  "templates/hyperliquid-python/tests/*.py",
+]

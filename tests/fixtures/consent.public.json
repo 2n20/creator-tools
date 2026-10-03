@@ -1,0 +1,10 @@
+{
+  "schema": "2n20-trading-key-consent-v1",
+  "chainId": 999,
+  "venue": "0xfb1613c44ad39500254e0441ca47f7e679862782",
+  "vault": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "key": "0xaEffC314716149504F78D610110ee62407477bB2",
+  "nonce": "1",
+  "deadline": "1791021287",
+  "signature": "0xd6cb1646eb61d6c654c67fe5b86a5604ff5c93a44b840451ffe2f09d76e213da21f7a3dbf08fe3aa3fb7ff8c70345493b9ffe1cc2594f1a1808e5ad9750beed91b"
+}

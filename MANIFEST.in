@@ -1,0 +1,17 @@
+include LICENSE README.md requirements-release.txt dependency-review.json
+include CONTRIBUTING.md SECURITY.md AGENTS.md
+include THIRD_PARTY.md
+recursive-include docs *.md
+recursive-include src/twon20 *.py *.json *.md
+recursive-include src/twon20/templates *.txt .gitignore
+recursive-include tests *.py *.public.json
+include scripts/build_release.py
+include scripts/check_release.py
+prune .venv
+prune build
+prune dist
+global-exclude *.key *.pem .env .env.* config.json notes.txt *.pyc *.pyo
+global-exclude __pycache__
+global-exclude *.log
+prune src/twon20/templates/hyperliquid-python/.runner-state
+prune src/twon20/templates/hyperliquid-python/.venv

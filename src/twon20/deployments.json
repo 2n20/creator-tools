@@ -1,0 +1,25 @@
+{
+  "chainId": 999,
+  "genesisHash": "0xda486bf0d500d665b3ffd1e39ae55a99fd6e3a1f0115ea6b01abf080567a83c8",
+  "deploymentBlock": "47447750",
+  "deploymentHash": "0x7d7ef5a210384e9fa5b2826163edcb8879d8bc66582da8553d3c226a0a3508be",
+  "contracts": {
+    "LocalVenue": "0xFB1613C44Ad39500254e0441ca47F7E679862782",
+    "MockUSDC": "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
+    "PlatformController": "0x74bC4F5F60D2AaC4b17EFC2c0E65a9B307A693DE",
+    "Vault": "0xbB672914C1FA44708A71461d7647a7E8824aD8aa",
+    "VaultFactory": "0xA7014e4821cb9331D7CBc8e9b49c7F33632f61cf"
+  },
+  "codeHashes": {
+    "LocalVenue": "0xb852373f0fbf062a41b8793d96daa76e50240a8b7c1b5f00e8cb329da47ec336",
+    "MockUSDC": "0xa119f674d44072e257f162aee49c7aba9b7a04fe2e8c84fcefddb366ab6d40cd",
+    "PlatformController": "0x48a6c47e84648ac4fd936b4930eb3f540e1d06b59e1685975f6b8d45933e98be",
+    "Vault": "0xcafbf2c5df3b85e47773cd4ee93821ad6d76fac4792c6ee51a089cb4b4c55ecd",
+    "VaultFactory": "0x8988a5c5815f908fbf98720513534d39af3fb0b9baabf531fa65cc3f835f58c3"
+  },
+  "venue": {
+    "model": "sdk",
+    "address": "0xFB1613C44Ad39500254e0441ca47F7E679862782",
+    "operator": "0x6D046A9f585541755081f0D424e97A924d8B95c8"
+  }
+}

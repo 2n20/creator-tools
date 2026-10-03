@@ -1,0 +1,16 @@
+.venv/
+.local/
+.env
+.env.*
+config.json
+notes.txt
+*.pem
+.pypirc
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.key
+2n20-*/
+!src/twon20/skills/2n20-setup/
+!src/twon20/skills/2n20-setup/SKILL.md

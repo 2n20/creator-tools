@@ -1,0 +1,8 @@
+{
+  "schema": "2n20-test-interoperability-v1",
+  "now": 1791017687,
+  "digest": "0xd5e82b1cdc7b56ec9b811ab1fa8e0e814963f5dd3cba5f108647b0c91ab841ab",
+  "expectedCurrentNonce": "0",
+  "privateMaterialRetained": false,
+  "vault": "synthetic public address, not the funded walkthrough vault"
+}
