@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.3.4'
+python -m pip --isolated install '2n20==0.3.5'
 2n20 --version
 ```
 
@@ -41,7 +41,7 @@ Then run the exact resume command with the same setup directory. Read the CLI's 
 
 Resume with the existing key after an interruption. For expired consent or a changed nonce, follow the CLI's same-key renewal instruction. Resolve a conflicting requested or approved key before continuing. Do not generate another key to bypass a failed check.
 
-If the handoff service is unavailable, import the exact public consent file printed by the CLI into the vault's Step 2. Resume the same directory. Renewal creates a new public file and retains the earlier files and private key.
+The CLI automatically retries temporary RPC and approval-link failures within a bounded budget, preserving the same key and public consent. If the handoff service remains unavailable, import the exact public consent file printed by the CLI into the vault's Step 2. Resume the same directory. Renewal creates a new public file and retains the earlier files and private key.
 
 ## Use your coding agent
 

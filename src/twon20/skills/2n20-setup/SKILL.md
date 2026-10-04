@@ -59,6 +59,8 @@ Renew preserves the key and writes a new public consent file. A key already used
 
 An expired approval link with still-valid consent may be renewed by onboard only after fresh contract checks confirm that same retained key remains eligible. Keep the newly returned handoff; no new key is generated.
 
+The CLI retries temporary RPC and approval-link failures automatically. Let the current command finish before starting another. If it still reports unavailable evidence, retain its exact resume command and public-file fallback. Do not reset the project, replace the key or repeat a deposit to repair a provider outage.
+
 When the CLI reaches `ready`, obtain public strategy settings and verify access:
 
 ```sh

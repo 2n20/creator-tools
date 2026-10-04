@@ -20,6 +20,7 @@ from twon20.discovery import discover
 from twon20.errors import SetupError
 from twon20.files import Output, load_key, load_setup, new_output, open_output, retain_key
 from twon20.onboarding import CHECKPOINT, HANDOFF_ENDPOINT, default_directory, onboard
+from twon20.rpc import TransientReadError
 from twon20.skill_export import export_skill
 
 from support import CORE, LINK, OWNER, FakeRpc
@@ -120,6 +121,60 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(first["requestId"], second["requestId"])
         self.assertEqual((Path(first["directory"]) / "strategy.key").read_bytes(), key)
         self.assertEqual(len(self.requests), 1)
+
+    def test_transient_handoff_recovers_in_one_run_after_revocation(self):
+        self.rpc.key = [0, 0, 2]
+        calls = []
+        def recovering(url, payload, **options):
+            calls.append(json.loads(json.dumps(payload)))
+            receipt = self.service(url, payload, **options)
+            if len(calls) == 1:
+                raise TransientReadError("EVIDENCE_UNAVAILABLE", "Temporary fixture failure")
+            if len(calls) == 2:
+                raise TransientReadError()  # Accepted on the server, response lost.
+            return receipt
+        with patch("twon20.onboarding.request_json", side_effect=recovering), patch("twon20.onboarding.time.sleep"):
+            first, code = self.run_onboard()
+        self.assertEqual(code, 2)
+        self.assertIn("approvalUrl", first)
+        self.assertNotIn("handoffUnavailable", first)
+        self.assertEqual(first["requiredHumanAction"]["kind"], "creator_wallet_approval")
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(item == calls[0] for item in calls))
+        self.assertEqual(calls[0]["consent"]["nonce"], "3")
+        self.assertEqual(len(self.service_receipts), 1)
+        retained = self.key_bytes()
+        again, _ = self.run_onboard()
+        self.assertEqual(again["approvalUrl"], first["approvalUrl"])
+        self.assertEqual(self.key_bytes(), retained)
+
+    def test_handoff_persistent_failure_is_bounded_and_keeps_public_fallback(self):
+        with patch("twon20.onboarding.request_json", side_effect=TransientReadError()) as send, patch("twon20.onboarding.time.sleep"):
+            result, code = self.run_onboard()
+        self.assertEqual(send.call_count, 3)
+        self.assertEqual(code, 2)
+        self.assertTrue(result["handoffUnavailable"])
+        retained = self.key_bytes()
+        recovered, _ = self.run_onboard()
+        self.assertIn("approvalUrl", recovered)
+        self.assertEqual(self.key_bytes(), retained)
+
+    def test_handoff_rate_limit_and_binding_conflict_are_not_retried(self):
+        for error in [SetupError("RATE_LIMITED", "Back off"), SetupError("BINDING_CHANGED", "Resolve binding")]:
+            with patch("twon20.onboarding.request_json", side_effect=error) as send:
+                result, _ = self.run_onboard()
+            self.assertEqual(send.call_count, 1)
+            self.assertNotIn("approvalUrl", result)
+
+    def test_handoff_retry_deadline_stops_before_next_request(self):
+        clock = [0]
+        def unavailable(*args, **kwargs):
+            clock[0] += 120
+            raise TransientReadError()
+        with patch("twon20.onboarding.request_json", side_effect=unavailable) as send, patch("twon20.onboarding.time.monotonic", side_effect=lambda: clock[0]):
+            result, _ = self.run_onboard()
+        self.assertEqual(send.call_count, 1)
+        self.assertTrue(result["handoffUnavailable"])
 
     def test_legacy_selection_uses_only_public_metadata_then_explicit_adoption(self):
         output = new_output(self.discover(LINK), self.directory)

@@ -2,8 +2,10 @@
 
 import json
 import re
+import time
 import urllib.error
 import urllib.request
+from email.utils import parsedate_to_datetime
 
 from eth_utils import keccak
 
@@ -13,6 +15,23 @@ from . import __version__
 RPC_URLS = {"mainnet": "https://rpc.hyperliquid.xyz/evm"}
 INFO_URLS = {"mainnet": "https://api.hyperliquid.xyz/info"}
 MAX_BYTES = 1_048_576
+
+
+class TransientReadError(SetupError):
+    """Retry metadata only; never retain provider bodies or URLs."""
+
+    def __init__(self, code="PUBLIC_READ_UNAVAILABLE", message="Public network evidence is temporarily unavailable. Resume the same setup.", retry_after=0):
+        super().__init__(code, message)
+        self.retry_after = retry_after
+
+
+def retry_after_seconds(value):
+    if not value:
+        return 0
+    try:
+        return max(0, int(value) if value.isdigit() else parsedate_to_datetime(value).timestamp() - time.time())
+    except (ValueError, TypeError, OverflowError):
+        return 60  # An unreadable provider backoff is not permission to retry immediately.
 
 
 def unique_object(pairs):
@@ -50,11 +69,17 @@ def request_json(url: str, payload: dict, error_messages=None, *, timeout=15):
                 raw = error.read(4097)
                 value = parse_json(raw) if len(raw) <= 4096 else None
                 if isinstance(value, dict) and set(value) in ({"code", "message"}, {"code", "message", "error"}) and isinstance(value.get("code"), str) and value["code"] in error_messages:
+                    if error.code == 503 and value["code"] in ("HANDOFF_UNAVAILABLE", "EVIDENCE_UNAVAILABLE"):
+                        raise TransientReadError(value["code"], error_messages[value["code"]], retry_after_seconds(error.headers.get("Retry-After"))) from None
                     raise SetupError(value["code"], error_messages[value["code"]])
             except (ValueError, OSError):
                 pass
+        if error.code in (408, 429, 500, 502, 503, 504):
+            raise TransientReadError(retry_after=retry_after_seconds(error.headers.get("Retry-After"))) from None
         raise SetupError("PUBLIC_READ_UNAVAILABLE", "Public network evidence is unavailable. Try again later; no transaction was submitted.") from None
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise TransientReadError() from None
+    except ValueError:
         raise SetupError("PUBLIC_READ_UNAVAILABLE", "Public network evidence is unavailable. Try again later; no transaction was submitted.") from None
 
 
@@ -64,15 +89,40 @@ class Rpc:
     def __init__(self, network: str):
         self.url = RPC_URLS[network]
         self._id = 0
+        self._recovery_seconds = 20.0
 
     def call(self, method: str, params: list):
         if method not in self.METHODS:
             raise SetupError("READ_ONLY", "Only public read operations are supported.")
         self._id += 1
-        response = request_json(self.url, {"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
-        if not isinstance(response, dict) or type(response.get("id")) is not int or response.get("id") != self._id or response.get("jsonrpc") != "2.0" or "error" in response or "result" not in response:
-            raise SetupError("RPC_UNAVAILABLE", "A required public contract read failed. Try again later; no transaction was submitted.")
-        return response["result"]
+        payload = {"jsonrpc": "2.0", "id": self._id, "method": method, "params": params}
+        failure = "A required public contract read failed. Resume the same setup; no transaction was submitted."
+        for attempt in range(3):
+            started = time.monotonic()
+            try:
+                response = request_json(self.url, payload, timeout=15 if attempt == 0 else min(15, self._recovery_seconds))
+                if not isinstance(response, dict) or type(response.get("id")) is not int or response.get("id") != self._id or response.get("jsonrpc") != "2.0":
+                    raise SetupError("RPC_UNAVAILABLE", failure)
+                if "error" in response:
+                    error = response["error"]
+                    code = error.get("code") if isinstance(error, dict) else None
+                    message = str(error.get("message", "")).lower() if isinstance(error, dict) else ""
+                    transient = type(code) is int and (code in (-32603, -32005) or code == -32000 and any(phrase in message for phrase in ("header not found", "unknown block", "state not found", "state is not available", "missing trie node", "rate limit")))
+                    if transient and "result" not in response:
+                        raise TransientReadError("RPC_UNAVAILABLE", failure)
+                    raise SetupError("RPC_UNAVAILABLE", failure)
+                if "result" not in response:
+                    raise SetupError("RPC_UNAVAILABLE", failure)
+                return response["result"]
+            except TransientReadError as error:
+                delay = max((0.5, 1.5, 0)[attempt], error.retry_after)
+                if attempt == 2 or self._recovery_seconds - (time.monotonic() - started if attempt else 0) <= delay:
+                    raise
+            finally:
+                if attempt:
+                    self._recovery_seconds = max(0, self._recovery_seconds - (time.monotonic() - started))
+            self._recovery_seconds -= delay
+            time.sleep(delay)
 
     def words(self, to: str, signature: str, arguments: list, block: dict, count: int) -> list[int]:
         data = "0x" + keccak(text=signature)[:4].hex() + "".join(word(argument) for argument in arguments)

@@ -18,7 +18,7 @@ from .discovery import ZERO, address, discover, vault_link
 from .errors import SetupError
 from .files import load_key, load_setup, new_output, open_output
 from .git_safety import ensure_key_ignored
-from .rpc import Rpc, parse_json, request_json
+from .rpc import Rpc, TransientReadError, parse_json, request_json
 from .status import status
 
 CHECKPOINT = "onboarding.public.json"
@@ -279,7 +279,18 @@ def handoff(output, found, state, consent, submit=None):
     payload = {"consent": consent, "owner": found.owner, "tradingAccount": found.trading_account}
     if len(json.dumps(payload).encode()) > 4096:
         raise SetupError("INVALID_HANDOFF", "The public approval request exceeds its supported size.")
-    value = submit(HANDOFF_ENDPOINT, payload) if submit else request_json(HANDOFF_ENDPOINT, payload, error_messages=HANDOFF_ERRORS, timeout=HANDOFF_TIMEOUT_SECONDS)
+    deadline = time.monotonic() + 120
+    for attempt in range(3):
+        try:
+            value = submit(HANDOFF_ENDPOINT, payload) if submit else request_json(HANDOFF_ENDPOINT, payload, error_messages=HANDOFF_ERRORS, timeout=min(HANDOFF_TIMEOUT_SECONDS, deadline - time.monotonic()))
+            break
+        except TransientReadError as error:
+            delay = max((1, 3, 0)[attempt], error.retry_after)
+            if attempt == 2 or deadline - time.monotonic() <= delay + 1:
+                raise
+            time.sleep(delay)
+            if time.monotonic() >= deadline:
+                raise
     value = verify_handoff(value, found, consent)
     checkpoint(output, state, "approval_required", handoff=value)
     return value
