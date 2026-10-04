@@ -114,6 +114,31 @@ class StrategyTests(unittest.TestCase):
         with patch("adapter.time.time", return_value=now/1000), patch("adapter.public_info", return_value=info), patch("twon20.files.load_key", side_effect=AssertionError()):
             self.assertEqual(len(public_candles("BTC")), 7)
 
+    def test_forming_candle_is_excluded_from_prices_and_freshness(self):
+        now = 1_800_030_000
+        boundary = 1_800_000_000
+        completed = [{"t": boundary - (6-i)*60000, "T": boundary - (5-i)*60000 - 1,
+                      "c": str(100+i)} for i in range(6)]
+        forming = {"t": boundary, "T": boundary + 59999, "c": "999"}
+        info = Mock()
+        info.meta.return_value = {"universe": [{"name": "BTC"}]}
+        info.candles_snapshot.return_value = list(reversed(completed + [forming]))
+        with patch("adapter.time.time", return_value=now/1000), patch("adapter.public_info", return_value=info):
+            self.assertEqual(public_candles("BTC"), [Decimal(100+i) for i in range(6)])
+
+    def test_forming_candle_cannot_hide_stale_completed_prices(self):
+        now = 1_800_030_000
+        boundary = 1_800_000_000
+        completed = [{"t": boundary - (9-i)*60000, "T": boundary - (8-i)*60000 - 1,
+                      "c": "100"} for i in range(6)]
+        info = Mock()
+        info.meta.return_value = {"universe": [{"name": "BTC"}]}
+        info.candles_snapshot.return_value = completed + [{"t": boundary, "T": boundary + 59999, "c": "999"}]
+        with patch("adapter.time.time", return_value=now/1000), patch("adapter.public_info", return_value=info):
+            with self.assertRaises(Stop) as stopped:
+                public_candles("BTC")
+            self.assertEqual(stopped.exception.code, "PUBLIC_API_UNAVAILABLE")
+
 
 class RiskTests(unittest.TestCase):
     def setUp(self): self.bounds = Bounds("BTC", "buy", Decimal(12), 20, 30)

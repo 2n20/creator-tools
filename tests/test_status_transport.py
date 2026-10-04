@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from twon20.discovery import discover
 from twon20.errors import SetupError
+from twon20.onboarding import HANDOFF_ERRORS, HANDOFF_TIMEOUT_SECONDS
 from twon20.rpc import Rpc, request_json
 from twon20.status import status
 
@@ -13,6 +14,23 @@ from support import CORE, KEY, LINK, OWNER, FakeRpc
 
 
 class StatusTests(unittest.TestCase):
+    def test_approval_timeout_allows_server_verification_without_slowing_rpc_timeouts(self):
+        with patch("twon20.rpc.urllib.request.OpenerDirector.open") as opened:
+            opened.return_value.__enter__.return_value.read.return_value = b'{}'
+            request_json("https://2n20.org/api/sdk/approval-requests", {}, timeout=HANDOFF_TIMEOUT_SECONDS)
+            self.assertEqual(opened.call_args.kwargs["timeout"], 65)
+            request_json("https://rpc.hyperliquid.xyz/evm", {})
+            self.assertEqual(opened.call_args.kwargs["timeout"], 15)
+
+    def test_unavailable_contract_evidence_keeps_its_safe_handoff_reason(self):
+        body = json.dumps({"code": "EVIDENCE_UNAVAILABLE", "message": "sensitive-disposable-marker", "error": "provider details"}).encode()
+        error = urllib.error.HTTPError("https://2n20.org/api/sdk/approval-requests", 503, "unavailable", {}, io.BytesIO(body))
+        with patch("twon20.rpc.urllib.request.OpenerDirector.open", side_effect=error), self.assertRaises(SetupError) as caught:
+            request_json(error.url, {}, error_messages=HANDOFF_ERRORS)
+        self.assertEqual(caught.exception.code, "EVIDENCE_UNAVAILABLE")
+        self.assertNotIn("sensitive-disposable-marker", caught.exception.message)
+        self.assertIn("retained", caught.exception.message)
+
     def setUp(self):
         self.rpc = FakeRpc()
         self.rpc.key = [int(KEY, 16), 0, 1]

@@ -33,11 +33,11 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise SetupError("REDIRECT_REJECTED", "A public service redirected the request. No setup data was accepted.")
 
 
-def request_json(url: str, payload: dict, error_messages=None):
+def request_json(url: str, payload: dict, error_messages=None, *, timeout=15):
     request = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
                                      headers={"Content-Type": "application/json", "User-Agent": "2n20-creator-cli/" + __version__}, method="POST")
     try:
-        with urllib.request.build_opener(NoRedirect).open(request, timeout=15) as response:
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
             raw = response.read(MAX_BYTES + 1)
             if len(raw) > MAX_BYTES:
                 raise SetupError("RESPONSE_TOO_LARGE", "The public service returned too much data. Try again later.")

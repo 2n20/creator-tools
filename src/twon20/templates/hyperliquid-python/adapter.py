@@ -395,9 +395,10 @@ def public_candles(market):
         if sum(asset.get("name") == market and not asset.get("isDelisted", False) for asset in universe) != 1:
             raise ValueError()
         candles = info.candles_snapshot(market, "1m", now - 60 * 60 * 1000, now)
-        closes = [number(candle["c"]) for candle in sorted(candles, key=lambda value: value["t"]) if candle["T"] < now]
+        completed = [candle for candle in sorted(candles, key=lambda value: value["t"]) if candle["T"] < now]
+        closes = [number(candle["c"]) for candle in completed]
         if not 6 <= len(closes) <= 60 or any(value <= 0 for value in closes): raise ValueError()
-        fresh(max(candle["T"] for candle in candles), 120000)
+        fresh(max(candle["T"] for candle in completed), 120000)
         return closes
     except Exception:
         raise Stop("PUBLIC_API_UNAVAILABLE", "Fresh public candle data is unavailable. Use deterministic fixture paper or retry later.") from None

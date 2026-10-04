@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.3.3'
+python -m pip --isolated install '2n20==0.3.4'
 2n20 --version
 ```
 

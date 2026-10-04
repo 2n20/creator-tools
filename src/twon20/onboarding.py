@@ -25,6 +25,7 @@ CHECKPOINT = "onboarding.public.json"
 STATE_SCHEMA = "2n20-onboarding-state-v1"
 HANDOFF_SCHEMA = "2n20-approval-handoff-v1"
 HANDOFF_ENDPOINT = "https://2n20.org/api/sdk/approval-requests"
+HANDOFF_TIMEOUT_SECONDS = 65  # The server has a 60-second verification budget.
 CONSENT_FILE = re.compile(r"consent(?:\.[0-9]+-[0-9a-f]+)?\.public\.json\Z")
 CONFLICT_ERRORS = frozenset({
     "CHECKPOINT_CONFLICT", "DIRECTORY_CONFLICT", "KEY_CONFLICT", "KEY_NOT_FRESH",
@@ -56,6 +57,7 @@ HANDOFF_ERRORS = {
     "UNSUPPORTED_NETWORK": "The service does not support this deployment network.",
     "UNSUPPORTED_CONSENT": "The service could not verify the supported contract consent format.",
     "HANDOFF_UNAVAILABLE": "The public approval service is unavailable. Keep this setup directory and use its public consent file or retry later.",
+    "EVIDENCE_UNAVAILABLE": "The approval service could not verify current contract evidence. Keep this setup directory and retry; your key and public consent are retained.",
     "RATE_LIMITED": "The public approval service is rate limited. Keep this setup directory and retry later.",
 }
 
@@ -277,7 +279,7 @@ def handoff(output, found, state, consent, submit=None):
     payload = {"consent": consent, "owner": found.owner, "tradingAccount": found.trading_account}
     if len(json.dumps(payload).encode()) > 4096:
         raise SetupError("INVALID_HANDOFF", "The public approval request exceeds its supported size.")
-    value = submit(HANDOFF_ENDPOINT, payload) if submit else request_json(HANDOFF_ENDPOINT, payload, error_messages=HANDOFF_ERRORS)
+    value = submit(HANDOFF_ENDPOINT, payload) if submit else request_json(HANDOFF_ENDPOINT, payload, error_messages=HANDOFF_ERRORS, timeout=HANDOFF_TIMEOUT_SECONDS)
     value = verify_handoff(value, found, consent)
     checkpoint(output, state, "approval_required", handoff=value)
     return value
