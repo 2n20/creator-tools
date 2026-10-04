@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.3.1'
+python -m pip --isolated install '2n20==0.3.2'
 2n20 --version
 ```
 
@@ -52,6 +52,8 @@ Export the bundled skill:
 ```
 
 Give your agent the exported `SKILL.md`, your vault URL and your strategy project location. If you need a project, ask it to generate the official starter in a new directory. Tell it where the strategy will run and which terminal/filesystem access you authorize. Your agent uses the CLI through that access; you open the approval link and use your wallet.
+
+The skill asks your agent to use short multiple-choice questions for missing setup decisions, with free-text answers for paths or other choices. If the harness has no question controls, it asks in chat. It reuses details you already supplied.
 
 For Codex and [Cursor](https://cursor.com/docs/skills), create the project's `.agents/skills` parent directory, then export to an unused `.agents/skills/2n20-setup` directory. For [Claude Code](https://code.claude.com/docs/en/skills), use an unused project `.claude/skills/2n20-setup` directory. You can use your agent application's user skill directory for a user-wide installation. Review the exported guide before invoking `2n20-setup`. Pip installation leaves agent configuration directories untouched; export refuses an existing directory.
 

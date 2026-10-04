@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "2n20"
-version = "0.3.1"
+version = "0.3.2"
 description = "Local setup, public connection checks and a strategy starter for 2n20 creators"
 readme = "README.md"
 requires-python = ">=3.10"
