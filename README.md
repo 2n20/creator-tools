@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.3.2'
+python -m pip --isolated install '2n20==0.3.3'
 2n20 --version
 ```
 
@@ -51,7 +51,7 @@ Export the bundled skill:
 2n20 skill export --directory '<new skill directory>'
 ```
 
-Give your agent the exported `SKILL.md`, your vault URL and your strategy project location. If you need a project, ask it to generate the official starter in a new directory. Tell it where the strategy will run and which terminal/filesystem access you authorize. Your agent uses the CLI through that access; you open the approval link and use your wallet.
+Give your agent the exported `SKILL.md`, your vault URL and your strategy project location. If you need a project, ask it to generate the official starter. It can create a new folder for you, or use a location you choose. Tell it where the strategy will run and which terminal/filesystem access you authorize. Your agent uses the CLI through that access; you open the approval link and use your wallet.
 
 The skill asks your agent to use short multiple-choice questions for missing setup decisions, with free-text answers for paths or other choices. If the harness has no question controls, it asks in chat. It reuses details you already supplied.
 
