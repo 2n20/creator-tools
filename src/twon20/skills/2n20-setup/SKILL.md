@@ -78,6 +78,16 @@ Configure the existing or generated strategy using `tradingAccount` as its Hyper
 
 For an existing strategy, use its supported read-only check when available and permitted, then paper operation. CLI access verification, a connection check and paper behavior prove different things; none proves live execution or profitability.
 
+After current public access, the project's read-only connection check and paper operation all pass, report completion from the same retained setup directory:
+
+```sh
+2n20 complete-setup --vault '<official vault page URL>' --directory '<retained setup directory>' --connection-checked --paper-checked --json
+```
+
+Pass these flags only for checks that actually succeeded for this project and account. The CLI verifies current public access and signs a separate software-setup report internally. It sends only public account bindings, passed-check flags, timestamps and a signature to the official website. It sends no private key, project files or logs and submits no blockchain transaction. The vault page completes Step 3 automatically after the service acknowledges the report. A failed or unavailable check must remain incomplete. If reporting fails, retain the exact directory and retry the same command after the service recovers; never replace its key or claim completion without acknowledgement.
+
+Finish with a clear result after acknowledgement. State that connection and paper checks passed, setup is complete, and the creator can continue developing the strategy or deliberately enable live trading in their software. State any remaining limitations specific to the project. Keep live trading disabled during setup.
+
 The starter's live-smoke and collateral commands default to public previews. Do not execute them, enable orders, restart live trading, move collateral, recreate the vault or repeat funding without separate concrete authorization that names the action and its bounds. Before an authorized live attempt, show the exact market, side, notional, slippage, duration and any proposed collateral movement. Keep retries within that authorization and preserve the runner's recovery journal. Browser automation and automatic wallet approval are outside this skill. Future venues remain outside the current Hyperliquid workflow.
 
 For collateral recovery, show the retained public request and its exact nonce. Obtain the human's explicit decision to accept the remaining risk before running `recovery --acknowledge UNVERIFIED_COLLATERAL --request-nonce '<shown nonce>'`. Acknowledgement releases only the local reservation; keep `transferIdentityVerified=false`. Never treat it as transfer verification, resend an action or delete recovery state to bypass unresolved evidence.

@@ -17,6 +17,7 @@ from .status import status
 from .onboarding import onboard
 from .skill_export import export_skill
 from .init import init_project
+from .completion import complete_setup
 
 
 def parser() -> argparse.ArgumentParser:
@@ -44,6 +45,12 @@ def parser() -> argparse.ArgumentParser:
     renew = commands.add_parser("renew", help="Renew public consent using the key retained in your setup directory")
     renew.add_argument("--directory", required=True, type=Path, help="The directory previously created by 2n20 setup")
     renew.add_argument("--json", action="store_true")
+    complete = commands.add_parser("complete-setup", help="Report successful software connection and paper checks using the retained key")
+    complete.add_argument("--vault", required=True)
+    complete.add_argument("--directory", required=True, type=Path)
+    complete.add_argument("--connection-checked", action="store_true", help="The project's read-only connection check passed")
+    complete.add_argument("--paper-checked", action="store_true", help="The project's paper operation passed")
+    complete.add_argument("--json", action="store_true")
     for command, help_text in (("status", "Verify public trading access without placing an order"), ("config", "Print verified public configuration for your existing strategy"), ("check-consent", "Check a public consent file against fresh contract evidence")):
         subparser = commands.add_parser(command, help=help_text)
         subparser.add_argument("--vault", required=True)
@@ -98,6 +105,8 @@ def run(args) -> tuple[dict, int]:
         return setup(args), 0
     if args.command == "renew":
         return renew(args), 0
+    if args.command == "complete-setup":
+        return complete_setup(args.vault, args.directory, args.connection_checked, args.paper_checked), 0
     found = discover(args.vault)
     rpc = Rpc(found.network)
     if args.command == "config":
@@ -153,6 +162,9 @@ def main(argv=None) -> int:
             print(result["privateFile"])
             print(result["nextAction"])
             print("Consent expires in one hour. If it expires or the nonce changes, run 2n20 renew --directory <your-setup-directory> here and import the new public file.")
+        elif args.command == "complete-setup":
+            print("Software connection and paper checks reported. Setup complete.")
+            print(result["nextAction"])
         else:
             print("Public consent signature, vault, approval contract, nonce and expiry verified.")
             print(result["nextAction"])

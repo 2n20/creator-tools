@@ -1,0 +1,18 @@
+{
+  "report": {
+    "schema": "2n20-software-setup-v1",
+    "chainId": 999,
+    "deploymentId": "20000000-0000-4000-8000-000000000001",
+    "vaultAddress": "0x1111111111111111111111111111111111111111",
+    "ownerAddress": "0x2222222222222222222222222222222222222222",
+    "coreAccount": "0x3333333333333333333333333333333333333333",
+    "tradingKey": "0xf2d0285e7bdbd7bd762c4ce2f222bd9708a527c0",
+    "keyNonce": "9007199254740993",
+    "connectionChecked": true,
+    "paperChecked": true,
+    "issuedAt": "1791350000",
+    "deadline": "1791350900",
+    "signature": "0x084f1c97af5b2e1238e0875811a741b125987439dfb00ff8363d40c1432a6e49157db550e657525324f6d4b02965e57d81696412046da7bb4a776f4b9565daf31c"
+  },
+  "digest": "0x6cba1f96c3ff77be8bdbf3ce73876aac6bafdba1ece0d7550b43bf1b84dc7007"
+}

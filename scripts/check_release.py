@@ -37,6 +37,7 @@ def main():
         working = Path(temporary).resolve()
         run("--version", cwd=working)
         run("onboard", "--help", cwd=working)
+        assert "--paper-checked" in run("complete-setup", "--help", cwd=working)
         run("skill", "export", "--directory", str(working / "skill"), cwd=working)
         assert (working / "skill/SKILL.md").is_file()
         result = run("init", str(working / "project"), "--template", "hyperliquid-python", "--json", cwd=working)
