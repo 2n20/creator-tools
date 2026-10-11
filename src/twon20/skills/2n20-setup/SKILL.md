@@ -9,13 +9,13 @@ Read the complete guide for the requested step before asking questions or runnin
 
 ### Step 2: Approve trading access
 
-Read [Step 2 instructions](references/step-2.md), then follow the CLI procedure below. After the creator's wallet approval, read the Step 3 guide and continue with the same project and setup directory. Reuse answers already supplied.
+Read [Step 2 instructions](references/step-2.md), then follow the CLI procedure below through preparation of the public approval link. Present that link and pause. Tell the creator to approve on the website, wait for Step 3 to open, then copy its connection instructions into this same conversation. Retain the project, setup directory and key. Wait for the Step 3 request before configuring the strategy or reporting completion. The preserved Step 2 guide also describes later connection work; perform that work only after the creator supplies the Step 3 request.
 
 ### Step 3: Connect your strategy
 
-Read [Step 3 instructions](references/step-3.md). Resume the retained project and key, check approval before configuration, and complete the connection, paper and reporting checks below. Ask only for missing details; do not restart project selection or generate a replacement key. If approval is still needed, resume its existing flow.
+The creator pastes Step 3's connection instructions after completing wallet approval on the website, normally in the same conversation as Step 2. Read [Step 3 instructions](references/step-3.md). Resume the retained project and key, check approval before configuration, and complete the connection, paper and reporting checks below. Ask only for missing details; do not restart project selection or generate a replacement key. If approval is still needed, resume its existing flow.
 
-Use these guides from creator-tools 0.4.1. Installing or upgrading the CLI does not update a previously installed skill. If a local copy differs, preserve it and read this release's skill and references from the public source, or export this version to a new comparison directory. If the current agent session does not discover an installed skill, read its files directly in the same conversation. Read relative links beside this file, or against this file's released source URL. If a required guide cannot be read, explain the missing file and stop rather than reconstructing its instructions.
+Use these guides from creator-tools 0.4.2. Installing or upgrading the CLI does not update a previously installed skill. If a local copy differs, preserve it and read this release's skill and references from the public source, or export this version to a new comparison directory. If the current agent session does not discover an installed skill, read its files directly in the same conversation. Read relative links beside this file, or against this file's released source URL. If a required guide cannot be read, explain the missing file and stop rather than reconstructing its instructions.
 
 ## CLI procedure
 
@@ -64,7 +64,7 @@ The CLI must confirm the exact key path is Git-ignored before private creation o
 
 For `approval_required`, present the official `approvalUrl` and ask the creator to approve with their creator wallet. Retain the returned directory and requestId in the task checkpoint. Reuse that same handoff when unchanged; do not create or repeatedly present another approval request. If the service is unavailable, the result identifies the public consent file for Step 2 import or paste. Use only that public file. The creator performs wallet approval; do not submit transactions or wallet confirmations yourself.
 
-After the creator responds, verify the outcome using the same command, optionally with `--wait 60 --json`. Public service state or the creator's confirmation alone never proves trading access. The CLI polls verified contract discovery and Hyperliquid public evidence for the exact retained key. Exit 0 and stage `ready` establish public trading access; exit 2 remains pending or needs a user action; exit 3 needs a later retry; exit 4 is a conflict requiring resolution. Exit 130 is interrupted and resumes from the same directory. Polling is bounded, with backoff. Do not run an unbounded loop.
+After the creator supplies the website's Step 3 request, verify the outcome using the same command, optionally with `--wait 60 --json`. Public service state or the creator's confirmation alone never proves trading access. The CLI polls verified contract discovery and Hyperliquid public evidence for the exact retained key. Exit 0 and stage `ready` establish public trading access; exit 2 remains pending or needs a user action; exit 3 needs a later retry; exit 4 is a conflict requiring resolution. Exit 130 is interrupted and resumes from the same directory. Polling is bounded, with backoff. Do not run an unbounded loop.
 
 For `consent_expired`, renew in the returned directory on the same strategy machine:
 

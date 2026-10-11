@@ -23,6 +23,16 @@ class SetupGuideTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(guide).hexdigest(), digest)
                 self.assertIn(b"<official vault page URL>", guide)
 
+    def test_step_two_waits_for_the_copied_step_three_request(self):
+        skill = files("twon20").joinpath("skills", "2n20-setup", "SKILL.md").read_text()
+        step_two = skill.split("### Step 2: Approve trading access\n", 1)[1].split("### Step 3:", 1)[0]
+        self.assertIn("Present that link and pause", step_two)
+        self.assertIn("copy its connection instructions into this same conversation", step_two)
+        self.assertIn("Wait for the Step 3 request before configuring the strategy or reporting completion", step_two)
+        self.assertIn("perform that work only after the creator supplies the Step 3 request", step_two)
+        self.assertNotIn("After the creator's wallet approval, read the Step 3 guide and continue", skill)
+        self.assertIn("After the creator supplies the website's Step 3 request, verify the outcome", skill)
+
     def test_both_steps_and_development_preserve_native_questions(self):
         root = files("twon20").joinpath("skills")
         texts = [root.joinpath("2n20-setup", "references", name).read_text()

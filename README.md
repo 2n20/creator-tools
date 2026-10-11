@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.4.1'
+python -m pip --isolated install '2n20==0.4.2'
 2n20 --version
 ```
 
@@ -59,7 +59,7 @@ Use `2n20-strategy` to adapt an existing backtest or bot, or develop the starter
 
 Use `2n20-setup` when you have a vault. Give your agent the vault URL, project location and machine. It uses the CLI through authorized terminal access; you open the approval link and use your wallet. A project prepared before vault creation is the same existing project in Step 2.
 
-The vault's copied requests select the setup skill's Step 2 or Step 3 instructions. The bundle retains both complete guides, including native multiple-choice questions, prior-answer reuse and continuation with the same key. Your agent can read the released files in the current conversation if skill discovery is unavailable. Upgrading the CLI does not replace an installed skill; preserve differing local copies and use the release linked in the request or export it to a new comparison directory.
+Copy Step 2 into your coding agent to prepare the approval link. Approve with your wallet on the website and wait for Step 3 to open. Then copy Step 3's connection instructions into the same agent conversation to finish setup. The two requests select the setup skill's corresponding guides. The bundle retains both complete guides, including native multiple-choice questions, prior-answer reuse and continuation with the same key. Your agent can read the released files in the current conversation if skill discovery is unavailable. Upgrading the CLI does not replace an installed skill; preserve differing local copies and use the release linked in the request or export it to a new comparison directory.
 
 For another client, export a portable guide:
 
