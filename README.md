@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.4.0'
+python -m pip --isolated install '2n20==0.4.1'
 2n20 --version
 ```
 
@@ -59,6 +59,8 @@ Use `2n20-strategy` to adapt an existing backtest or bot, or develop the starter
 
 Use `2n20-setup` when you have a vault. Give your agent the vault URL, project location and machine. It uses the CLI through authorized terminal access; you open the approval link and use your wallet. A project prepared before vault creation is the same existing project in Step 2.
 
+The vault's copied requests select the setup skill's Step 2 or Step 3 instructions. The bundle retains both complete guides, including native multiple-choice questions, prior-answer reuse and continuation with the same key. Your agent can read the released files in the current conversation if skill discovery is unavailable. Upgrading the CLI does not replace an installed skill; preserve differing local copies and use the release linked in the request or export it to a new comparison directory.
+
 For another client, export a portable guide:
 
 ```sh
@@ -66,7 +68,7 @@ For another client, export a portable guide:
 2n20 skill export --name 2n20-setup --directory ./setup-guide
 ```
 
-Give the exported `SKILL.md` to the client. Execution requires its own authorized terminal and filesystem tools. No MCP server is required for the local coding-agent flow. See [Agent skills](https://2n20.org/docs/agents) for installation options.
+Give the complete exported directory to the client, including `SKILL.md` and any `references` files. Execution requires its own authorized terminal and filesystem tools. No MCP server is required for the local coding-agent flow. See [Agent skills](https://2n20.org/docs/agents) for installation options.
 
 After your project's read-only connection and paper checks pass, your agent reports those results with the retained key. The website completes Step 3 automatically. To report the checks yourself:
 

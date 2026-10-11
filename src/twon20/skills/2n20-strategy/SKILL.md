@@ -5,6 +5,8 @@ description: Adapt an existing backtest or bot into a modular Hyperliquid strate
 
 Work in the creator's authorized project and machine. Preserve their strategy logic, parameters and risk choices. Inspect safe source and tests first; identify the signal, sizing, portfolio state, data assumptions and execution interfaces. Do not replace an existing strategy with a demonstration or imply profitable results. Ask only for missing non-secret decisions that affect implementation.
 
+For missing details, ask one short question at a time. Use your question controls when available, with two or three relevant choices for decisions such as existing project or starter, and this computer or VPS. Allow a custom answer using the built-in option when provided. Ask for paths and SSH destinations as text. If question controls are unavailable, ask the same concise questions in chat. Wait for my answer. A default selection is not consent.
+
 For a new project, use the official `2n20 init '<new project directory>' --template hyperliquid-python --json` command after the creator chooses the project location. Init requires an absent destination. Read the generated starter README for exact supported commands and dependency installation instructions. Do not invent runtime flags or install an unpublished release.
 
 For missing operating code, inspect and reuse or adapt the bundled starter's candle feed and limit chaser through their documented interfaces. Preserve an existing feed or executor. Read the reviewed starter source from the installed package or official public repository; do not initialize a second project just to adapt this one.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "2n20"
-version = "0.4.0"
+version = "0.4.1"
 description = "Local setup, public connection checks and a strategy starter for 2n20 creators"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -60,6 +60,7 @@ where = ["src"]
 twon20 = [
   "deployments.json",
   "skills/2n20-setup/SKILL.md",
+  "skills/2n20-setup/references/*.md",
   "skills/2n20-strategy/SKILL.md",
   "templates/hyperliquid-python/*.py",
   "templates/hyperliquid-python/*.md",

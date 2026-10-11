@@ -23,6 +23,8 @@ Build twice with the same SOURCE_DATE_EPOCH and compare hashes. Install the sdis
 
 ## Trusted Publishing
 
+The setup skill includes `references/step-2.md` and `references/step-3.md`. Preserve the approved instruction text during delivery changes. `test_setup_guides.py` checks its recorded digests, native question instructions and installed/exported reference files. Any change to these guides needs an explicit behavior review; do not update the digests just to make a delivery change pass.
+
 Configure an existing-project GitHub publisher on PyPI, without an API token:
 
 | Setting | Exact value |

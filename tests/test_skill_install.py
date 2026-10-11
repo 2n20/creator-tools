@@ -27,12 +27,13 @@ class SkillInstallTests(unittest.TestCase):
                 (unrelated / "SKILL.md").write_text("custom")
                 result = install_skills(agent, self.root)
                 self.assertEqual(result["version"], __version__)
-                self.assertEqual(len(result["files"]), 2)
+                self.assertEqual(len(result["files"]), 4)
                 for path in result["files"]:
                     path = Path(path)
                     self.assertEqual(path.stat().st_mode & 0o777, 0o600)
                     self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
-                    self.assertIn(f"name: {path.parent.name}", path.read_text())
+                    if path.name == "SKILL.md":
+                        self.assertIn(f"name: {path.parent.name}", path.read_text())
                 again = install_skills(agent, self.root)
                 self.assertEqual([item["status"] for item in again["skills"]], ["unchanged", "unchanged"])
                 self.assertEqual((unrelated / "SKILL.md").read_text(), "custom")
@@ -84,7 +85,7 @@ class SkillInstallTests(unittest.TestCase):
         with patch("twon20.skill_export.Path.cwd", return_value=self.root), patch("twon20.cli.discover", side_effect=AssertionError("network discovery")), contextlib.redirect_stdout(output):
             code = main(["skill", "install", "--agent", "codex", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(len(json.loads(output.getvalue())["files"]), 2)
+        self.assertEqual(len(json.loads(output.getvalue())["files"]), 4)
 
     def test_cli_named_export_and_install(self):
         for args in (["skill", "export", "--name", "2n20-strategy", "--directory", str(self.root / "export"), "--json"],
@@ -92,7 +93,7 @@ class SkillInstallTests(unittest.TestCase):
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 self.assertEqual(main(args), 0)
-            self.assertEqual(len(json.loads(output.getvalue())["files"]), 1)
+            self.assertEqual(len(json.loads(output.getvalue())["files"]), 1 if args[1] == "export" else 3)
 
     def test_nested_reference_assets_export_and_install(self):
         bundle = {"SKILL.md": b"skill", "references/guide.md": b"reference"}

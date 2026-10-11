@@ -3,6 +3,22 @@ name: 2n20-setup
 description: Connect an existing strategy or create a Hyperliquid Python starter on a 2n20 creator's strategy machine, resume public wallet approval, and verify access using the official CLI.
 ---
 
+## Website entry points
+
+Read the complete guide for the requested step before asking questions or running setup. Both guides preserve the website's tested instructions, including native multiple-choice questions. Use the actual vault URL from the creator's request wherever the guide says `<official vault page URL>`.
+
+### Step 2: Approve trading access
+
+Read [Step 2 instructions](references/step-2.md), then follow the CLI procedure below. After the creator's wallet approval, read the Step 3 guide and continue with the same project and setup directory. Reuse answers already supplied.
+
+### Step 3: Connect your strategy
+
+Read [Step 3 instructions](references/step-3.md). Resume the retained project and key, check approval before configuration, and complete the connection, paper and reporting checks below. Ask only for missing details; do not restart project selection or generate a replacement key. If approval is still needed, resume its existing flow.
+
+Use these guides from creator-tools 0.4.1. Installing or upgrading the CLI does not update a previously installed skill. If a local copy differs, preserve it and read this release's skill and references from the public source, or export this version to a new comparison directory. If the current agent session does not discover an installed skill, read its files directly in the same conversation. Read relative links beside this file, or against this file's released source URL. If a required guide cannot be read, explain the missing file and stop rather than reconstructing its instructions.
+
+## CLI procedure
+
 For strategy development or adapting a backtest before a vault exists, use the bundled `2n20-strategy` skill. Keep that work in paper mode and return here when a vault is available.
 
 Use the creator's supplied host and project path. Do not ask them to choose either again. If they already have a strategy, work in that existing project. If they have no project, offer the official Hyperliquid Python starter and obtain their choice before creating it. If host access is unresolved, prepare the exact command and ask for that missing action. Do not generate a trading key on another machine.

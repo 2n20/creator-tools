@@ -506,7 +506,7 @@ class SkillExportTests(unittest.TestCase):
             contents = (destination / "SKILL.md").read_text()
             self.assertIn("name: 2n20-setup", contents)
             self.assertIn("2n20 onboard --vault", contents)
-            self.assertEqual(sorted(path.name for path in destination.iterdir()), ["SKILL.md"])
+            self.assertEqual(sorted(path.name for path in destination.iterdir()), ["SKILL.md", "references"])
             self.assertEqual(value["skillFile"], str(destination / "SKILL.md"))
             with self.assertRaises(SetupError) as caught:
                 export_skill(destination)

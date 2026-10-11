@@ -31,6 +31,7 @@ def main():
                 names = archive.getnames()
         validate_names(names)
         for required in ("skills/2n20-setup/SKILL.md", "skills/2n20-strategy/SKILL.md",
+                         "skills/2n20-setup/references/step-2.md", "skills/2n20-setup/references/step-3.md",
                          "templates/hyperliquid-python/feed.py", "templates/hyperliquid-python/executor.py",
                          "templates/hyperliquid-python/runtime.py", "templates/hyperliquid-python/runner.py",
                          "templates/hyperliquid-python/requirements-runner.txt"):
@@ -42,8 +43,12 @@ def main():
         assert "--paper-checked" in run("complete-setup", "--help", cwd=working)
         run("skill", "export", "--directory", str(working / "skill"), cwd=working)
         assert (working / "skill/SKILL.md").is_file()
+        for name in ("step-2.md", "step-3.md"):
+            assert (working / "skill/references" / name).is_file()
         installed = run("skill", "install", "--agent", "codex", "--json", cwd=working)
         assert {item["skill"] for item in installed["skills"]} == {"2n20-setup", "2n20-strategy"}
+        for name in ("step-2.md", "step-3.md"):
+            assert (working / ".agents/skills/2n20-setup/references" / name).read_bytes() == (working / "skill/references" / name).read_bytes()
         repeated = run("skill", "install", "--agent", "codex", "--json", cwd=working)
         assert all(item["status"] == "unchanged" for item in repeated["skills"])
         run("skill", "export", "--name", "2n20-strategy", "--directory", str(working / "strategy-skill"), cwd=working)
