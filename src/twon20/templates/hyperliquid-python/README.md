@@ -1,6 +1,6 @@
 # Hyperliquid Python starter
 
-An educational moving-average crossover and a small official SDK adapter for a CLI-verified 2n20 trading account. Paper is the default. The crossover demonstrates software structure, with no profitability claim. The separately invoked live smoke test is one bounded entry followed by one reduction of confirmed fills; it does not run the moving-average strategy live.
+A continuous official-SDK candle feed, a replaceable educational band-breakout strategy, a maker-first limit-chasing executor and local execution reports for a CLI-verified 2n20 trading account. Paper is the default. The same strategy produces normalized targets in paper and live modes. It makes no profitability claim. The separate finite paper and live-smoke diagnostics remain available.
 
 You operate this software on your own computer or server. Python 3.10 or later, an existing 2n20 vault and a place to run the software are prerequisites for connecting the account. Deterministic paper can run before creating or funding a vault.
 
@@ -25,7 +25,80 @@ Replace `<RELEASED_CLI_VERSION>` with the version in `2n20-template.public.json`
 python runner.py paper --public-data --market BTC
 ```
 
-`strategy.py` contains only the crossover and finite simulation. `adapter.py` holds the official SDK boundary, `risk.py` the explicit limits and `execution.py` the finite smoke workflow. Protocol discovery, consent, approval and key recovery stay in the CLI. `config.public.example.json` is a placeholder reference, never a place for credentials.
+## Run the continuous example
+
+```sh
+# Finite, deterministic observations with fictional fills. No account needed.
+python runner.py run --mode paper --feed fixture --max-bars 30
+
+# Continuous public candle stream, still fictional fills and no signer.
+python runner.py run --mode paper --feed public --config config.public.example.json
+
+# A bounded public-data demonstration.
+python runner.py run --mode paper --feed public --max-seconds 90
+```
+
+Stop the foreground process with Ctrl-C. The fixture contains 32 observations and exits on its own. Public mode remains running until stopped or a bound is reached. Default runtime directories are `.runtime-paper-fixture`, `.runtime-paper-public` and `.runtime-live-public`. Keep each directory for restart, or supply an explicit private `--state-directory`. The diagnostic commands continue to use `.runner-state`. State directories and generated credentials stay ignored.
+
+The public feed uses the pinned SDK's `Info.subscribe` candle stream. Websocket `data` is one candle object; `t` opens the interval and `T` closes it. There is no exchange close flag. After close plus a 1.5-second grace, a REST `candles_snapshot` confirms the completed candle. Only fresh contiguous decisions may trade. Initial warmup and repaired history update the strategy without trading historical signals. The runtime recreates silent/disconnected sockets and repairs overlaps/gaps; it does not depend on SDK replay. A changed committed bar stops decisions for review.
+
+The example strategy computes a rolling mean and sample standard deviation. A close above the upper band chooses long, a close below the lower band chooses short, and crossing the rolling mean chooses flat. Direction persists otherwise. This is an educational component with its own small checkpoint, not a complete research strategy or an alpha claim. Paper fills are immediate and fictional, including shorts, and omit fees, funding, latency and market impact.
+
+| Module | Replace or inspect here |
+| --- | --- |
+| `models.py` | `Bar`, normalized `Target`, and small Feed/Strategy/Executor interfaces |
+| `feed.py` | Fixture or official SDK candle feed |
+| `strategy.py` | `BandBreakout.evaluate(bars, checkpoint)` and the legacy finite paper example |
+| `runtime.py` | Constructor composition, strategy checkpoint and frozen target sizing |
+| `executor.py` | Paper fills and incremental `LimitChaser` |
+| `runtime_adapter.py` | Verified account reads, exact owned-child submission/cancellation |
+| `runtime_io.py` | One serialized network worker and effect-admission checks |
+| `runtime_journal.py` | One bounded atomic runtime checkpoint |
+| `reporting.py` | Local JSON output and optional Telegram |
+| `adapter.py`, `risk.py`, `execution.py` | Existing SDK/account boundary and separate finite diagnostics |
+
+To replace the strategy, change `BandBreakout` in `strategy.py` and its construction in `runtime.py`. Its only inputs are validated bars and its prior public checkpoint. Return `(Target(Decimal("1"), "my_reason"), checkpoint)` for a normalized long target, fraction `-1` for short, or `0` for flat. Return `None` as the target to retain the current intent. Fractions between -1 and 1 scale the configured notional. No SDK client, order ID or signer belongs in the strategy. Use the same constructor in paper and live mode. A custom feed implements nonblocking `poll(now_ms)`, `healthy`, `done` and `close`; a custom executor implements `recover`, `set_target`, `step` and `shutdown`. Replace those constructors in the composition, keeping all effect and durability boundaries intact. This starter includes no backtester, optimizer or hosted service.
+
+`config.public.example.json` is real public runtime configuration. It contains example paper limits, not a live authorization. Save another reviewed configuration as `*.public.json`; never put credentials there. `targetNotional` fixes the signed coin target at the decision's close price and configured lot precision. Repeating the same normalized fraction keeps that quantity, even across restarts. `childNotional`, `maxChildren`, `chaseSeconds`, `requoteSeconds` and `slippageBps` bound the chase. These limits are separate from the diagnostic smoke limits of 10 to 100 USDC. Live metadata must match `sizeDecimals`.
+
+Children start post-only (`Alo`). Set `iocAfterSeconds` to an explicit time before `chaseSeconds` to allow later IOC urgency; null keeps all children maker-first. Optional `depthFraction` caps a child to a fraction of the selected best book level's notional. Optional `dailyVolumeFraction` caps it to that fraction of reported 24-hour notional volume, prorated over `requoteSeconds`. These caps can only reduce size. A cap below the venue minimum produces `residual_dust`, not a raised budget. Arrival-price bounds are hard admission checks. Partial fills retain their exact quantity and VWAP. A side flip first reduces the owned position and verifies zero before opening the other side. Dust is never reported as flat.
+
+## Preview and explicitly authorize a live runtime
+
+After the connection check, review a public configuration and choose a bounded session duration. The following is a preview and submits no orders:
+
+```sh
+python runner.py run --mode live --feed public --config config.public.example.json \
+  --vault '<VAULT_URL>' --directory '<SETUP_DIRECTORY>' --max-seconds 300
+```
+
+Only after deliberately authorizing those limits, repeat with `--execute LIVE_RUNTIME`. Approval through the website alone does not authorize live trading. The runtime supports one native USDC perpetual on an account exclusively operated by this process. Any unowned orders, fills or unexplained positions block it. It never adopts existing exposure, cancels another order, raises leverage or transfers collateral.
+
+The session deadline is retained. Restarting the same command reconciles the same identities without renewing that deadline. New orders stop at expiry; exact owned-order cancellation has a separately retained 60-second cleanup grace. Stopping or a failed feed also inhibits new children and attempts bounded owned cleanup. It does not flatten positions automatically. Network requests cannot be recalled by a thread timeout. An unresolved child and account reservation remain durable after the cleanup budget ends.
+
+Use `--recover-only` with the same live command, state directory and explicit execution flag to authorize a fresh cleanup-only duration (`--max-seconds`). It never evaluates strategy or submits a new child, and can recover retained order plans even if strategy source has changed. Example:
+
+```sh
+python runner.py run --mode live --feed public --config config.public.example.json \
+  --vault '<VAULT_URL>' --directory '<SETUP_DIRECTORY>' --state-directory '<ORIGINAL_RUNTIME_DIRECTORY>' \
+  --max-seconds 60 --recover-only --execute LIVE_RUNTIME
+```
+
+After all children are resolved, `--new-session` explicitly reauthorizes the retained configuration and frozen target for another duration. Preview it without `--execute` first. Fresh account activity and exact owned position must agree; a retained child blocks rearming. It preserves quantities and child sequence identity and renews chase/session deadlines only because this flag was supplied. A changed strategy or configuration needs explicit migration/recovery review, not a reset journal. Never delete state or account registry files to force progress.
+
+The single atomic checkpoint includes the bar cursor, bounded strategy history/state, active and latest pending intents, child phase and exact fills. New decisions coalesce while an old child is reconciled. A canceled partial child is retired only when terminal order status, `origSz - sz`, complete matching fills and fresh owned position agree. If canceled-order remaining size is absent or uses unsupported semantics, the child remains blocked. `unknownOid`, missing fills, a full history page or mismatched evidence cannot license replacement. Mock tests do not establish funded acceptance or live execution quality.
+
+The foreground coordinator handles at most eight bars per tick and waits at most 100 ms between iterations, excluding local checkpoint/output I/O and user replacement code. One serialized worker holds at most one network task. It rechecks stop, feed freshness, target generation and retained deadlines immediately before each order. The feed has 128 coalesced ingress entries, 128 retained bars and at most 512 backfill intervals. Overflow latches repair outside the buffer. Eight failed recovery attempts stop the feed; an outage beyond that history needs review.
+
+Checkpoint reads and writes share a 256 KiB ceiling. Active child evidence is capped at 256 fills. Account history retains the original activity baseline and at most 256 completed owned order IDs; a 2,000-row activity response blocks rather than truncates. A verified terminal child compacts exact quantity/value/fees into current-intent totals. The last 64 local report records remain in the checkpoint; stdout can be captured by your own log retention system. Evidence limits require review before further trading, not silent watermark advancement. Account reservations remain associated with the runtime directory at shutdown, including when flat.
+
+## Optional Telegram reports
+
+Local JSON reports are written durably before delivery. They include stable event IDs, target and child IDs, verified size, residual, VWAP, USDC fees and maker/taker fill counts. Paper records are labeled simulated. To enable optional Telegram, set `reporting.telegram` to true in your reviewed public configuration and supply `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to the process through your own local environment. Do not paste their values into chat, configuration, logs or version control.
+
+Telegram uses a queue of 16 records, a three-second request timeout and at most two attempts per record. Full queues or delivery failure affect remote reporting only. Local records remain authoritative. A lost acknowledgement may cause a duplicate; event IDs help identify it. Exactly-once delivery is not promised.
+
+Protocol discovery, consent, approval and private-key recovery remain in the CLI.
 
 ## Connect the existing vault
 
@@ -88,7 +161,7 @@ python runner.py recovery --vault '<VAULT_URL>' --directory '<SETUP_DIRECTORY>' 
 
 Acknowledgement requires fresh no-conflict account evidence and reverified completion of any retained smoke orders. It records a human residual-risk decision and releases the local reservation; transfer identity stays unverified. It never loads a signer, resubmits, resets an order journal or authorizes another trade. A pending transfer without matching observed balances remains blocked. Do not delete registry files to bypass unresolved evidence. Paper, checks and previews remain available. A new experiment after verified completion or explicit collateral acknowledgement still needs a separately reviewed state directory and limits.
 
-Exit codes are 0 for paper, read-only check, preview, verified complete round trips and explicit human collateral acknowledgement; 2 for recovery review, changed historical completion, explicit submission rejection, unresolved evidence/exposure or observed collateral balance changes without transfer identity; 3 for refused/unavailable checks; 130 for interruption. Every result is JSON with a stable schema/stage and public next action. Validated executions include an exact resume instruction; invalid vault inputs are never echoed into one. Errors omit provider exception text, credentials and signed payloads. Shutdown does not hide unresolved exposure or authorize extra orders. There is no automatic order cancellation, recovery trade or service restart.
+Exit codes are 0 for paper, read-only check, preview, verified complete round trips and explicit human collateral acknowledgement; 2 for recovery review, changed historical completion, explicit submission rejection, unresolved evidence/exposure or observed collateral balance changes without transfer identity; 3 for refused/unavailable checks; 130 for interruption. Every result is JSON with a stable schema/stage and public next action. Validated executions include an exact resume instruction; invalid vault inputs are never echoed into one. Errors omit provider exception text, credentials and signed payloads. Shutdown does not hide unresolved exposure or authorize extra orders. These finite diagnostics do not automatically cancel orders or restart services. Continuous-runtime owned cancellation and explicit recovery are described above.
 
 ## Running on a shared server
 

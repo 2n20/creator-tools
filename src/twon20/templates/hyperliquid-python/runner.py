@@ -17,6 +17,19 @@ def parser():
     simulation.add_argument("--public-data", action="store_true")
     simulation.add_argument("--market", default="BTC")
     simulation.add_argument("--budget", default="12")
+    continuous = sub.add_parser("run", help="Continuous educational strategy and bounded execution")
+    continuous.add_argument("--mode", choices=("paper", "live"), default="paper")
+    continuous.add_argument("--feed", choices=("fixture", "public"), default="fixture")
+    continuous.add_argument("--config", default="config.public.example.json")
+    continuous.add_argument("--state-directory", help="Defaults to .runtime-<mode>-<feed>; retain it across restarts")
+    continuous.add_argument("--max-bars", type=int)
+    continuous.add_argument("--max-seconds", type=int)
+    continuous.add_argument("--vault")
+    continuous.add_argument("--directory")
+    continuous.add_argument("--execute", choices=("LIVE_RUNTIME",))
+    lifecycle = continuous.add_mutually_exclusive_group()
+    lifecycle.add_argument("--new-session", action="store_true", help="Explicitly rearm retained limits after verified ownership")
+    lifecycle.add_argument("--recover-only", action="store_true", help="Only reconcile/cancel the original child; admit no targets")
     for name in ("check", "live-smoke", "collateral", "recovery"):
         mode = sub.add_parser(name)
         mode.add_argument("--vault", required=True)
@@ -40,6 +53,9 @@ def parser():
 
 
 def run(args):
+    if args.command == "run":
+        from runtime import run_command
+        return run_command(args)
     if args.command in (None, "paper"):
         if getattr(args, "public_data", False):
             from adapter import public_candles
@@ -85,6 +101,8 @@ def run(args):
             with account_lock(access.scope["tradingAccount"]) as guard:
                 journal = Journal(state_directory, access.scope)
                 try:
+                    if journal.output.exists("runtime.public.json"):
+                        raise Stop("RUNTIME_OWNS_DIRECTORY", "Use run --recover-only for this retained runtime. Legacy recovery cannot release its account reservation.")
                     if journal.read("collateral.public.json") is None:
                         raise Stop("RECOVERY_MISSING", "There is no retained collateral request in this state directory.")
                     guard.reserve(journal, access.scope)
@@ -121,6 +139,8 @@ def run(args):
         with account_lock(access.scope["tradingAccount"]) as guard:
             journal = Journal(state_directory, access.scope)
             try:
+                if journal.output.exists("runtime.public.json"):
+                    raise Stop("RUNTIME_OWNS_DIRECTORY", "This directory belongs to a continuous runtime. Legacy diagnostics cannot replace or release its account reservation.")
                 guard.reserve(journal, access.scope)
                 other = journal.read("collateral.public.json" if bounds else "smoke.public.json")
                 if other is not None and other.get("phase") not in {"balance_observed", "human_acknowledged", "complete", "entry_rejected"}:

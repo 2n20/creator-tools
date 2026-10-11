@@ -42,3 +42,39 @@ def paper(closes, budget="12", fast=3, slow=5):
             "signerLoaded": False, "decisions": decisions,
             "simulatedEquity": str(cash + quantity * Decimal(str(closes[-1]))),
             "limitations": "Fictional fills; no fees, funding, latency or profit forecast."}
+
+
+class BandBreakout:
+    """Educational rolling-band component, with a durable current direction.
+
+    Above the upper sample-standard-deviation band: long. Below the lower
+    band: short. A crossing of the rolling mean: flat. This is a small
+    replaceable component, not the original multi-signal strategy or an alpha
+    claim. It uses no research, optimization or backtesting dependencies.
+    """
+    def __init__(self, window=20, multiplier="2"):
+        from risk import Stop, number
+        self.window, self.multiplier = window, number(multiplier)
+        if type(window) is not int or not 3 <= window <= 128 or not 0 < self.multiplier <= 10:
+            raise Stop("STRATEGY_CONFIG_INVALID", "Choose a band window from 3 to 128 and a positive multiplier up to 10.")
+        self.warmup_bars = window
+
+    def evaluate(self, bars, checkpoint):
+        from models import Target
+        from risk import number
+        previous = number(checkpoint.get("fraction", "0"), signed=True)
+        if len(bars) < self.window:
+            return None, {"fraction": str(previous), "distance": None}
+        values = [bar.close for bar in bars[-self.window:]]
+        mean = sum(values) / self.window
+        deviation = (sum((value - mean) ** 2 for value in values) / (self.window - 1)).sqrt()
+        distance = values[-1] - mean
+        fraction, reason = previous, "band_hold"
+        if distance > self.multiplier * deviation:
+            fraction, reason = Decimal(1), "upper_breakout"
+        elif distance < -self.multiplier * deviation:
+            fraction, reason = Decimal(-1), "lower_breakout"
+        old_distance = checkpoint.get("distance")
+        if old_distance is not None and number(old_distance, signed=True) * distance < 0:
+            fraction, reason = Decimal(0), "mean_crossing"
+        return Target(fraction, reason), {"fraction": str(fraction), "distance": str(distance)}

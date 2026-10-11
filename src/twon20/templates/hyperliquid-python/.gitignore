@@ -6,3 +6,5 @@ __pycache__/
 logs/
 2n20-setup-*/
 2n20-*-*/
+.runtime-state/
+.runtime-*/

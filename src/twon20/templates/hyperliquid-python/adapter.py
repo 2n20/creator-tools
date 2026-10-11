@@ -151,7 +151,11 @@ class Adapter:
             front = self.read(self.info.frontend_open_orders, account)
             if not isinstance(front, list) or len(front) > 2000:
                 raise ValueError()
-            orders = orders or front
+            # Frontend orders can include account exposure absent from the
+            # native open-orders response. Never hide one list with `or`.
+            if any(not isinstance(order, dict) or type(order.get("oid")) is not int for order in orders + front):
+                raise ValueError()
+            orders = list({order["oid"]: order for order in front + orders}.values())
             self.other_dex_conflicts(account)
             spot = self.read(self.info.spot_user_state, account)
             balances = spot["balances"]
@@ -174,6 +178,8 @@ class Adapter:
             fresh(state["time"])
             return {"market": market, "decimals": asset["szDecimals"], "mark": mark,
                     "bid": bid, "ask": ask, "positions": positions, "orders": orders,
+                    "bidDepth": bid * number(book["levels"][0][0]["sz"]), "askDepth": ask * number(book["levels"][1][0]["sz"]),
+                    "dayNotionalVolume": number(contexts[index]["dayNtlVlm"]) if "dayNtlVlm" in contexts[index] else None,
                     "perp_available": perp_available, "spot_available": spot_available, "taker_fee": fee,
                     "checkedAt": int(time.time()), "accountMode": "standard", "collateral": "native USDC"}
         except Stop:
