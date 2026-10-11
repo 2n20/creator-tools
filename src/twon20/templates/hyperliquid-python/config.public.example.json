@@ -1,8 +1,7 @@
 {
-  "schema": "2n20-runtime-config-v1",
+  "schema": "2n20-runtime-config-v2",
   "market": "BTC",
   "interval": "1m",
-  "sizeDecimals": 5,
   "strategy": {"window": 20, "multiplier": "2"},
   "execution": {
     "targetNotional": "100",

@@ -41,7 +41,8 @@ def main():
         working = Path(temporary).resolve()
         run("--version", cwd=working)
         run("onboard", "--help", cwd=working)
-        assert "--paper-checked" in run("complete-setup", "--help", cwd=working)
+        assert "--connection-checked" in run("complete-setup", "--help", cwd=working)
+        assert "--paper-checked" not in run("complete-setup", "--help", cwd=working)
         run("skill", "export", "--directory", str(working / "skill"), cwd=working)
         assert (working / "skill/SKILL.md").is_file()
         for name in ("step-2.md", "step-3.md"):

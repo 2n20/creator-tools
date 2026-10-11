@@ -40,7 +40,7 @@ class CompletionTests(unittest.TestCase):
         return {'completion': {name: report[name] for name in ('deploymentId', 'vaultAddress', 'ownerAddress', 'coreAccount', 'tradingKey', 'keyNonce')} | {'completedAt': '2026-10-07T00:00:00.000Z'}}
 
     def complete(self, **kwargs):
-        return complete_setup(LINK, self.directory, True, True, submit=kwargs.get('submit', self.service), now=self.rpc.now)
+        return complete_setup(LINK, self.directory, True, submit=kwargs.get('submit', self.service), now=self.rpc.now)
 
     def test_signed_report_matches_retained_key_and_preserves_directory(self):
         result = self.complete()
@@ -51,10 +51,13 @@ class CompletionTests(unittest.TestCase):
         self.assertEqual(again, result)
         self.assertEqual(len(self.requests), 2)
         self.assertNotIn('privateKey', self.requests[0])
+        self.assertNotIn('paperChecked', self.requests[0])
+        self.assertEqual(self.requests[0]['schema'], '2n20-software-setup-v2')
+        self.assertEqual(typed_data(self.requests[0])['domain']['version'], '2')
 
     def test_failed_checks_or_changed_key_never_sign_or_report(self):
-        with self.assertRaisesRegex(SetupError, 'Run the project'):
-            complete_setup(LINK, self.directory, False, True)
+        with self.assertRaisesRegex(SetupError, 'Configure the project'):
+            complete_setup(LINK, self.directory, False)
         self.ready.return_value = {'tradingAccessReady': False}
         with patch('twon20.completion.load_key') as private:
             with self.assertRaises(SetupError):

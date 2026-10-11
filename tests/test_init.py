@@ -51,7 +51,9 @@ class InitTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(generated.stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE((self.destination / "tests").stat().st_mode), 0o700)
         self.assertIn("'<official vault page URL>'", result["commands"]["onboard"])
-        self.assertEqual(result["commands"]["paper"], ".venv/bin/python runner.py")
+        self.assertNotIn("paper", result["commands"])
+        self.assertIn("checkConnection", result["commands"])
+        self.assertNotIn("paper", result["nextAction"])
         self.assertIn("--require-hashes", result["commands"]["installReviewedRunner"])
         self.assertFalse(list(self.destination.rglob("*.key")))
 

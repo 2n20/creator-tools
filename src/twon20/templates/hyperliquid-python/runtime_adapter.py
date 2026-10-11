@@ -131,7 +131,7 @@ class RuntimeAdapter(Adapter):
         if current["orders"] or state.get("child"):
             raise Stop("ACCOUNT_CONFLICT", "A new child requires no previous owned or unowned open order.")
         if current["decimals"] != plan["decimals"] or size.quantize(Decimal(1).scaleb(-current["decimals"])) != size:
-            raise Stop("PRECISION_UNAVAILABLE", "Configured market precision differs from verified metadata.")
+            raise Stop("PRECISION_UNAVAILABLE", "Market precision changed since this order was planned. Reconcile it before replanning.")
         target = number(intent["quantity"], signed=True)
         delta = target - position
         reducing = position != 0 and delta * position < 0

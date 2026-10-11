@@ -1,6 +1,5 @@
 """Foreground composition and one atomic owner for decisions and execution state."""
 import copy
-from decimal import Decimal, ROUND_DOWN
 import hashlib
 import json
 from pathlib import Path
@@ -117,15 +116,14 @@ class Runtime:
             self.admission.generation = active["id"]
             self.state["normalized"] = normalized
             return
-        size = (number(self.config["execution"]["targetNotional"]) * abs(target.fraction) / bar.close).quantize(
-            Decimal(1).scaleb(-self.config["sizeDecimals"]), rounding=ROUND_DOWN)
+        size = number(self.config["execution"]["targetNotional"]) * abs(target.fraction) / bar.close
         self.state["decisionSequence"] += 1
         identity = hashlib.sha256((self.policy + ":" + str(bar.open_ms) + ":" + str(self.state["decisionSequence"])).encode()).hexdigest()[:32]
         intent = {"id": identity, "fraction": normalized, "quantity": str(size if target.fraction >= 0 else -size),
                   "arrivalPrice": str(bar.close), "createdMs": now_ms,
                   "deadlineMs": now_ms + self.config["execution"]["chaseSeconds"] * 1000,
                   "market": bar.market, "sourceBar": bar.open_ms, "policy": self.policy,
-                  "sizeDecimals": self.config["sizeDecimals"], "reason": target.reason}
+                  "reason": target.reason}
         if state["pending"]:
             self.report("superseded", state["pending"])
         self.executor.set_target(intent)
@@ -297,7 +295,7 @@ def run_command(args):
                 snapshot = adapter.snapshot(config["market"])
                 validate_market(config, snapshot)
                 return {"schema": "2n20-runner-result-v1", "stage": "runtime_preview", "scope": access.scope,
-                        "config": config, "sessionSeconds": args.max_seconds, "ownedCleanupGraceSeconds": 60,
+                        "config": config, "sizeDecimals": snapshot["decimals"], "sessionSeconds": args.max_seconds, "ownedCleanupGraceSeconds": 60,
                         "newSession": args.new_session, "recoverOnly": args.recover_only, "ordersSubmitted": 0, "signerLoaded": False,
                         "accountHasConflicts": bool(snapshot["positions"] or snapshot["orders"]),
                         "requiredHumanAction": "Review these limits and then explicitly use --execute LIVE_RUNTIME. Reuse the same state directory."}, 0

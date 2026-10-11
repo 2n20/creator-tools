@@ -4,7 +4,7 @@ A continuous official-SDK candle feed, a replaceable educational band-breakout s
 
 You operate this software on your own computer or server. Python 3.10 or later, an existing 2n20 vault and a place to run the software are prerequisites for connecting the account. Deterministic paper can run before creating or funding a vault.
 
-## Install and run paper
+## Install
 
 This project was exported by `2n20 init`. Keep the CLI installed at the released version that generated it. The official SDK is an additional runner dependency, excluded from the CLI's base dependencies. The full reviewed third-party graph is pinned and hashed in `requirements-runner.txt`; registry timestamps and hashes are in `dependency-review.json`.
 
@@ -13,32 +13,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip --isolated install '2n20==<RELEASED_CLI_VERSION>'
 python -m pip install --require-hashes --only-binary=:all: -r requirements-runner.txt
-python -m unittest discover -s tests -v
-python runner.py
+python runner.py --help
 ```
 
-Replace `<RELEASED_CLI_VERSION>` with the version in `2n20-template.public.json`, using the exact `installPublishedCli` command returned by `2n20 init`. Run that command inside this new environment before the tests. A source preview of an unreleased version must use a locally built reviewed wheel instead; do not assume a registry version exists until the release is published.
-
-`python runner.py` uses invented deterministic closes in `fixture.candles.public.json`. It never loads a signer, submits an order, transfers collateral or starts a service. Its fictional fills omit fees, funding, latency and market impact. To simulate against public recent candles instead:
-
-```sh
-python runner.py paper --public-data --market BTC
-```
-
-## Run the continuous example
-
-```sh
-# Finite, deterministic observations with fictional fills. No account needed.
-python runner.py run --mode paper --feed fixture --max-bars 30
-
-# Continuous public candle stream, still fictional fills and no signer.
-python runner.py run --mode paper --feed public --config config.public.example.json
-
-# A bounded public-data demonstration.
-python runner.py run --mode paper --feed public --max-seconds 90
-```
-
-Stop the foreground process with Ctrl-C. The fixture contains 32 observations and exits on its own. Public mode remains running until stopped or a bound is reached. Default runtime directories are `.runtime-paper-fixture`, `.runtime-paper-public` and `.runtime-live-public`. Keep each directory for restart, or supply an explicit private `--state-directory`. The diagnostic commands continue to use `.runner-state`. State directories and generated credentials stay ignored.
+Replace `<RELEASED_CLI_VERSION>` with the version in `2n20-template.public.json`, using the exact `installPublishedCli` command returned by `2n20 init`. Run that command inside this new environment before running the project. A source preview of an unreleased version must use a locally built reviewed wheel instead; do not assume a registry version exists until the release is published.
 
 The public feed uses the pinned SDK's `Info.subscribe` candle stream. Websocket `data` is one candle object; `t` opens the interval and `T` closes it. There is no exchange close flag. After close plus a 1.5-second grace, a REST `candles_snapshot` confirms the completed candle. Only fresh contiguous decisions may trade. Initial warmup and repaired history update the strategy without trading historical signals. The runtime recreates silent/disconnected sockets and repairs overlaps/gaps; it does not depend on SDK replay. A changed committed bar stops decisions for review.
 
@@ -60,9 +38,42 @@ The example strategy computes a rolling mean and sample standard deviation. A cl
 
 To replace the strategy, change `BandBreakout` in `strategy.py` and its construction in `runtime.py`. Its only inputs are validated bars and its prior public checkpoint. Return `(Target(Decimal("1"), "my_reason"), checkpoint)` for a normalized long target, fraction `-1` for short, or `0` for flat. Return `None` as the target to retain the current intent. Fractions between -1 and 1 scale the configured notional. No SDK client, order ID or signer belongs in the strategy. Use the same constructor in paper and live mode. A custom feed must return Bar/BarBatch observations for the configured market and interval, with the same validation and continuity rules. Other sampling methods require an explicit adaptation of that contract. It implements nonblocking `poll(now_ms)`, `healthy`, `done` and `close`; a custom executor implements `recover`, `set_target`, `step` and `shutdown`. Replace those constructors in the composition, keeping all effect and durability boundaries intact. This starter includes no backtester, optimizer or hosted service.
 
-`config.public.example.json` is real public runtime configuration. It contains example paper limits, not a live authorization. Save another reviewed configuration as `*.public.json`; never put credentials there. `targetNotional` fixes the signed coin target at the decision's close price and configured lot precision. Repeating the same normalized fraction keeps that quantity, even across restarts. `childNotional`, `maxChildren`, `chaseSeconds`, `requoteSeconds` and `slippageBps` bound the chase. These limits are separate from the diagnostic smoke limits of 10 to 100 USDC. Live metadata must match `sizeDecimals`. Set the market, interval, precision and limits here; pass the same file with `--config` to `check` and `run`. Changing markets does not require editing the feed, strategy or executor. The check and live preview reject mismatched market metadata or precision. Execution rechecks them when sizing each child. Retained state belongs to its original configuration; do not reuse another market's journal or delete it to force a switch.
+## Configure your strategy
+
+Review `config.public.example.json`, or save your chosen settings as `*.public.json`. Use schema `2n20-runtime-config-v2`. Set the market, candle interval, strategy parameters, target/child notional, slippage, chase duration and reporting preferences. The bundled values are examples, not authorization to trade. Keep credentials in the retained CLI key and local secret loader, separate from this public file. Preserve an existing project's configuration and loader instead of copying secret contents.
+
+Pass the same file with `--config` to `check` and `run`. Size precision comes from Hyperliquid's `szDecimals` metadata; the executor derives price precision from Hyperliquid's rules and rounds order quantities down. No precision field belongs in user configuration. The read-only check and live preview report the observed precision, and each child order uses fresh metadata. Changed precision invalidates an already prepared order before submission.
+
+`targetNotional` fixes the desired signed coin quantity at the decision's close price. Repeating the same normalized fraction keeps that target across restarts. The executor rounds each actual child order to the current venue lot size; a non-tradeable remainder is dust, not a filled target. The developer simulation uses unrounded fictional quantities and does not model venue precision or fills.
+
+`childNotional`, `maxChildren`, `chaseSeconds`, `requoteSeconds` and `slippageBps` bound the chase. These limits are separate from the diagnostic smoke limits of 10 to 100 USDC. Changing markets does not require editing the feed, strategy or executor. Retained state belongs to its original configuration; do not reuse another market's journal or delete it to force a switch. Existing generated projects require deliberate source/configuration review; a CLI upgrade does not rewrite them.
 
 Children start post-only (`Alo`). Set `iocAfterSeconds` to an explicit time before `chaseSeconds` to allow later IOC urgency; null keeps all children maker-first. Optional `depthFraction` caps a child to a fraction of the selected best book level's notional. Optional `dailyVolumeFraction` caps it to that fraction of reported 24-hour notional volume, prorated over `requoteSeconds`. These caps can only reduce size. A cap below the venue minimum produces `residual_dust`, not a raised budget. Arrival-price bounds are hard admission checks. Partial fills retain their exact quantity and VWAP. A side flip first reduces the owned position and verifies zero before opening the other side. Dust is never reported as flat.
+
+## Optional developer simulation
+
+Use the simulation to exercise changes without orders, or use your existing tests. It is not required for vault setup. Run `python -m unittest discover -s tests -v` for the bundled regression suite.
+
+`python runner.py` uses invented deterministic closes in `fixture.candles.public.json`. It never loads a signer, submits an order, transfers collateral or starts a service. Its fictional fills omit fees, funding, latency and market impact. To simulate against public recent candles instead:
+
+```sh
+python runner.py paper --public-data --market BTC
+```
+
+### Run a development simulation
+
+```sh
+# Finite, deterministic observations with fictional fills. No account needed.
+python runner.py run --mode paper --feed fixture --max-bars 30
+
+# Continuous public candle stream, still fictional fills and no signer.
+python runner.py run --mode paper --feed public --config config.public.example.json
+
+# A bounded public-data demonstration.
+python runner.py run --mode paper --feed public --max-seconds 90
+```
+
+Stop the foreground process with Ctrl-C. The fixture contains 32 observations and exits on its own. Public mode remains running until stopped or a bound is reached. Default runtime directories are `.runtime-paper-fixture`, `.runtime-paper-public` and `.runtime-live-public`. Keep each directory for restart, or supply an explicit private `--state-directory`. The diagnostic commands continue to use `.runner-state`. State directories and generated credentials stay ignored.
 
 ## Preview and explicitly authorize a live runtime
 
@@ -118,16 +129,24 @@ The read-only `check` verifies the reviewed installed SDK, public CLI setup reco
 
 The trading key remains at `<SETUP_DIRECTORY>/strategy.key` with mode 600 inside a mode 700 directory. Only the intended runtime reads it internally for an explicitly authorized SDK action. Agents must never inspect, print, paste, upload or commit its contents. Public consent and configuration files are safe to share; `strategy.key` is private. Keep the same key and journal through errors. The setup CLI handles consent expiry/nonce changes and the public-file fallback when the approval service is unavailable. A creator-wallet approval is separate from verified HyperCore activation and usable collateral.
 
-## Preview a bounded live smoke test
+After the configured project's read-only check passes, report completion with the retained key:
 
-First use paper and read-only checks. Live orders require a separate explicit decision including market, side, notional, slippage and time. The values below illustrate command syntax; choose your own limits after reviewing the preview. No setup or approval command automatically enables these actions.
+```sh
+2n20 complete-setup --vault '<VAULT_URL>' --directory '<SETUP_DIRECTORY>' --connection-checked --json
+```
+
+The website completes Step 3 after acknowledgement. Setup means configured and connected; it submits no orders and makes no paper or live-test claim.
+
+## Bounded live smoke
+
+Complete configuration and the read-only connection check first. The live test is optional and its result is separate from setup completion. Live orders require a separate explicit decision including market, side, notional, slippage and time. The values below illustrate command syntax; choose your own limits after reviewing the preview. No setup or approval command automatically enables these actions.
 
 ```sh
 python runner.py live-smoke --vault '<VAULT_URL>' --directory '<SETUP_DIRECTORY>' \
-  --market BTC --side buy --max-notional 12 --slippage-bps 20 --duration-seconds 30
+  --market '<CONFIGURED_MARKET>' --side buy --max-notional 12 --slippage-bps 20 --duration-seconds 30
 ```
 
-The preview never loads a signer or writes an execution journal. The example accepts a 10 to 100 USDC maximum notional, 1 to 50 basis points of slippage and 5 to 120 seconds. Market lot rounding must still form a valid minimum 10 USDC order. A budget of 10 USDC may be too small after rounding; a balance below the minimum plus fees cannot execute this example. The check conservatively requires enough usable perpetual collateral for the full notional, both taker fees and a reserve. It never raises leverage, deposits, increases a budget or deploys a contract.
+Replace `<CONFIGURED_MARKET>` with the market in your reviewed configuration. The preview never loads a signer or writes an execution journal. The example accepts a 10 to 100 USDC maximum notional, 1 to 50 basis points of slippage and 5 to 120 seconds. Market lot rounding must still form a valid minimum 10 USDC order. A budget of 10 USDC may be too small after rounding; a balance below the minimum plus fees cannot execute this example. The check conservatively requires enough usable perpetual collateral for the full notional, both taker fees and a reserve. It never raises leverage, deposits, increases a budget or deploys a contract.
 
 Only if you deliberately authorize the displayed plan, repeat the exact preview command with `--execute LIVE_SMOKE`. It sends at most two immediate-or-cancel orders: one entry, then one reduce-only reduction sized to confirmed entry fills. Each write rechecks the local key's approval and account binding. Per-order rejection, partial fills, stale reads and unavailable access are explicit outcomes. A small partial entry can produce exposure below the normal minimum; the reduction may reject. No dust exemption is promised and no automatic size increase occurs.
 

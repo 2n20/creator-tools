@@ -5,21 +5,21 @@ description: Connect an existing strategy or create a Hyperliquid Python starter
 
 ## Website entry points
 
-Read the complete guide for the requested step before asking questions or running setup. Both guides preserve the website's tested instructions, including native multiple-choice questions. Use the actual vault URL from the creator's request wherever the guide says `<official vault page URL>`.
+Read the complete guide for the requested step before asking questions or running setup. Both guides retain the website's wallet handoff and native multiple-choice questions. Use the actual vault URL from the creator's request wherever the guide says `<official vault page URL>`.
 
 ### Step 2: Approve trading access
 
-Read [Step 2 instructions](references/step-2.md), then follow the CLI procedure below through preparation of the public approval link. Present that link and pause. Tell the creator to approve on the website, wait for Step 3 to open, then copy its connection instructions into this same conversation. Retain the project, setup directory and key. Wait for the Step 3 request before configuring the strategy or reporting completion. The preserved Step 2 guide also describes later connection work; perform that work only after the creator supplies the Step 3 request.
+Read [Step 2 instructions](references/step-2.md), then follow the CLI procedure below through preparation of the public approval link. Present that link and pause. Tell the creator to approve on the website, wait for Step 3 to open, then copy its connection instructions into this same conversation. Retain the project, setup directory and key. Wait for the Step 3 request before configuring the strategy or reporting completion.
 
 ### Step 3: Connect your strategy
 
-The creator pastes Step 3's connection instructions after completing wallet approval on the website, normally in the same conversation as Step 2. Read [Step 3 instructions](references/step-3.md). Resume the retained project and key, check approval before configuration, and complete the connection, paper and reporting checks below. Ask only for missing details; do not restart project selection or generate a replacement key. If approval is still needed, resume its existing flow.
+The creator pastes Step 3's connection instructions after completing wallet approval on the website, normally in the same conversation as Step 2. Read [Step 3 instructions](references/step-3.md). Resume the retained project and key, check approval before configuration, and complete the connection check and completion report below. Ask only for missing details; do not restart project selection or generate a replacement key. If approval is still needed, resume its existing flow.
 
-Use these guides from creator-tools 0.4.3. Installing or upgrading the CLI does not update a previously installed skill. If a local copy differs, preserve it and read this release's skill and references from the public source, or export this version to a new comparison directory. If the current agent session does not discover an installed skill, read its files directly in the same conversation. Read relative links beside this file, or against this file's released source URL. If a required guide cannot be read, explain the missing file and stop rather than reconstructing its instructions.
+Use these guides from creator-tools 0.5.0. Installing or upgrading the CLI does not update a previously installed skill. If a local copy differs, preserve it and read this release's skill and references from the public source, or export this version to a new comparison directory. If the current agent session does not discover an installed skill, read its files directly in the same conversation. Read relative links beside this file, or against this file's released source URL. If a required guide cannot be read, explain the missing file and stop rather than reconstructing its instructions.
 
 ## CLI procedure
 
-For strategy development or adapting a backtest before a vault exists, use the bundled `2n20-strategy` skill. Keep that work in paper mode and return here when a vault is available.
+For strategy development or adapting a backtest before a vault exists, use the bundled `2n20-strategy` skill. Develop without live orders and return here when a vault is available. Use the project's own tests; the starter simulation is optional.
 
 Use the creator's supplied host and project path. Do not ask them to choose either again. If they already have a strategy, work in that existing project. If they have no project, offer the official Hyperliquid Python starter and obtain their choice before creating it. If host access is unresolved, prepare the exact command and ask for that missing action. Do not generate a trading key on another machine.
 
@@ -27,7 +27,7 @@ For a requested starter without a chosen location, ask **Where should I create t
 
 For missing details, ask one short question at a time. Use the harness's native question controls when available in the current mode. Offer two or three relevant choices for decisions, such as **Existing project / Official Python starter** or **This computer / VPS**. Retain an Other/free-text route, using the harness's built-in option when it provides one. Recommend an option only when the creator's context supports it. Ask for existing project paths and SSH destinations as short text inputs; never invent them. If question controls are unavailable, ask the same concise questions in chat without changing modes or requiring an integration. Reuse earlier answers and wait for an answer before dependent work. A preselected option or silence is not consent. These questions do not replace creator-wallet approval or authorize live trading.
 
-Use the installed official `2n20` CLI, version 0.4.0 or later for the modular starter. Its public source is https://github.com/2n20/creator-tools. Treat the starter's demonstration strategy as code to inspect and adapt, not a promise of profitability or an assessment of the creator's strategy. Export or install this skill into a harness only on explicit instruction; preserve unrelated agent configuration.
+Use the installed official `2n20` CLI, version 0.5.0 or later for connection-only completion. Its public source is https://github.com/2n20/creator-tools. Treat the starter's demonstration strategy as code to inspect and adapt, not a promise of profitability or an assessment of the creator's strategy. Export or install this skill into a harness only on explicit instruction; preserve unrelated agent configuration.
 
 Check `python3 --version`, `2n20 --version` and `python3 -m pip show 2n20`. Python 3.10 or later on Linux, macOS or WSL is supported. If installation or upgrading is needed, use the currently published commands at https://2n20.org/docs/quickstart and verify that exact release is available on https://pypi.org/project/2n20/ first. Do not invent an unpublished version or use an unrelated installer.
 
@@ -39,16 +39,7 @@ For a new starter, run:
 2n20 init '<new project directory>' --template hyperliquid-python --json
 ```
 
-Init refuses an existing directory, including an empty one. It writes the reviewed bundled source and a public template-version manifest without installing dependencies, creating a key, starting a service or placing a trade. Follow its returned environment and reviewed installation commands only for an available published release. From the generated project, run the default paper example first:
-
-```sh
-.venv/bin/python runner.py run --feed fixture --max-bars 30
-.venv/bin/python runner.py run --feed public --max-seconds 90
-```
-
-Install project-local agent skills only after init has created the starter directory. Read this guide directly while preparing the project. Do not pre-create the destination to install skills.
-
-Both commands default to paper mode and require no vault or trading key. The fixture checks the local loop; the public feed checks Hyperliquid connectivity. The older finite example remains available as `runner.py paper`. Read the generated README before adapting the demonstration. Preserve generated source edits; rerunning init is not an upgrade mechanism.
+Init refuses an existing directory, including an empty one. It writes the reviewed bundled source and a public template-version manifest without installing dependencies, creating a key, starting a service or placing a trade. Follow its returned environment and reviewed installation commands only for an available published release. Install project-local agent skills after init has created the starter directory. Read this guide directly while preparing the project. Do not pre-create the destination to install skills. Inspect the generated README and verify the installed CLI and runner help from the project's own environment. The starter's fixture simulation remains an optional development utility, not an onboarding requirement. Preserve generated source edits; rerunning init is not an upgrade mechanism.
 
 For an existing project, inspect its safe source and public configuration to identify the strategy's account and secret-loader interfaces. Do not replace the project with a starter or claim arbitrary bot support. Keep changes scoped and reviewable. Both entry paths continue through the same CLI onboarding below.
 
@@ -90,25 +81,29 @@ When the CLI reaches `ready`, obtain public strategy settings and verify access:
 
 Inspect safe source files to identify the existing strategy's supported Hyperliquid account and secret-loading interfaces. Exclude private keys, `.env*`, config.json, notes.txt and wallet backups from all searches and reads. Make only scoped, reviewable source or public configuration changes that point the existing loader to the retained local key path; do not read or copy its private contents. If an interface is unsupported or unclear, state the precise integration boundary and ask the creator for the missing non-secret information. Do not claim arbitrary bot compatibility or add an order framework.
 
+For the starter, review `config.public.example.json` with the creator. Reuse known choices and ask only for missing market, candle interval, strategy parameters, target and child notional limits, slippage, chase duration and reporting preferences. Write the agreed values to that public configuration or a chosen `*.public.json` file. Explain that the bundled numbers are examples, not authorization to trade. Precision comes from Hyperliquid metadata in the executor; no size or price decimals belong in user configuration. Keep secrets separate in the retained CLI key and existing local secret loader. For an existing project, preserve its configuration format and loader. Inspect safe source or a redacted schema; if a private config needs manual editing, provide the field names and have the creator perform that step locally without sharing secret values.
+
 Configure the existing or generated strategy using `tradingAccount` as its Hyperliquid account address and its own local secret loader. A 2n20 trading account is not an SDK native vault: do not pass it as `vault_address`. Do not fall back to a legacy key, the creator wallet or the key's own account when the verified binding is unavailable. Keep `vault` and `approvalContract` distinct. For the generated starter, run its read-only connection check:
 
 ```sh
 .venv/bin/python runner.py check --vault '<official vault page URL>' --directory '<retained setup directory>' --config config.public.example.json
 ```
 
-Use the same reviewed public configuration file for the starter connection check and its paper/live runtime. Replace the example filename above when the project uses another public configuration. The check verifies its selected market and size precision; do not add a separate market override. Keep an older or customized starter intact and inspect its supported commands before adapting it.
+Use the same reviewed public configuration file for the starter connection check and its paper/live runtime. Replace the example filename above when the project uses another public configuration. The check verifies its selected market and discovers precision from Hyperliquid metadata; do not ask the creator to configure decimals or add a separate market override. Keep an older or customized starter intact and inspect its supported commands before adapting it.
 
-For an existing strategy, use its supported read-only check when available and permitted, then paper operation. CLI access verification, a connection check and paper behavior prove different things; none proves live execution or profitability.
+For an existing strategy, run its supported read-only connection check. Do not require a paper mode, add a simulator or place an order to complete setup. If the check is missing or fails, explain the integration gap and keep setup incomplete. Verified access and a read-only connection do not prove live execution or profitability.
 
-After current public access, the project's read-only connection check and paper operation all pass, report completion from the same retained setup directory:
+After current public access and the configured project's read-only connection check both pass, report completion from the same retained setup directory:
 
 ```sh
-2n20 complete-setup --vault '<official vault page URL>' --directory '<retained setup directory>' --connection-checked --paper-checked --json
+2n20 complete-setup --vault '<official vault page URL>' --directory '<retained setup directory>' --connection-checked --json
 ```
 
-Pass these flags only for checks that actually succeeded for this project and account. The CLI verifies current public access and signs a separate software-setup report internally. It sends only public account bindings, passed-check flags, timestamps and a signature to the official website. It sends no private key, project files or logs and submits no blockchain transaction. The vault page completes Step 3 automatically after the service acknowledges the report. A failed or unavailable check must remain incomplete. If reporting fails, retain the exact directory and retry the same command after the service recovers; never replace its key or claim completion without acknowledgement.
+Pass --connection-checked only after configuration and a successful read-only check for this project and account. The CLI verifies current public access and signs a separate software-setup report internally. It sends only public account bindings, the connection-check result, timestamps and a signature to the official website. It sends no private key, project files or logs and submits no blockchain transaction. The vault page completes Step 3 automatically after the service acknowledges the report. A failed or unavailable check must remain incomplete. If reporting fails, retain the exact directory and retry the same command after the service recovers; never replace its key or claim completion without acknowledgement.
 
-Finish with a clear result after acknowledgement. State that connection and paper checks passed, setup is complete, and the creator can continue developing the strategy or deliberately enable live trading in their software. State any remaining limitations specific to the project. Keep live trading disabled during setup.
+Finish with a clear result after acknowledgement. State that the project is configured and connected, setup is complete, and no orders were placed during setup. Offer one optional next action: a bounded live test. Ask whether the creator wants to prepare that test or finish here, using native choices when available. Do not require a live test for setup completion or present paper trading as a competing onboarding path. State any remaining limitations specific to the project. Keep live trading disabled during setup.
+
+For an optional live test, use the existing project's bounded test if it has one, or the starter's documented `live-smoke` command. Reuse the configured market. Ask for any missing side, maximum notional, slippage and duration. Show the read-only preview and obtain explicit approval of that exact plan before executing it. Do not invent a budget or transfer collateral to make the test pass. If collateral preparation is needed, preview it and obtain its own authorization. Report the live test result separately from setup completion, including unresolved exposure and its recovery command. A preview, rejected order or incomplete round trip is not a successful live test.
 
 The starter's continuous `run --mode live`, live-smoke and collateral commands default to public previews. The continuous runner needs its own explicit session duration and execution confirmation. Do not execute them, enable orders, restart live trading, move collateral, recreate the vault or repeat funding without separate concrete authorization that names the action and its bounds. Before an authorized live attempt, show the exact market, side, notional, slippage, duration and any proposed collateral movement. Keep retries within that authorization and preserve the runner's recovery journal. Browser automation and automatic wallet approval are outside this skill. Future venues remain outside the current Hyperliquid workflow.
 

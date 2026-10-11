@@ -16,8 +16,6 @@ def validate_market(settings, snapshot):
     decimals = snapshot.get("decimals")
     if type(decimals) is not int or not 0 <= decimals <= 6:
         raise Stop("PRECISION_UNAVAILABLE", "Current market size precision is unavailable.")
-    if decimals != settings["sizeDecimals"]:
-        raise Stop("PRECISION_UNAVAILABLE", f"Configured sizeDecimals is {settings['sizeDecimals']}; current market metadata requires {decimals}. Review the public configuration before continuing.")
 
 
 @dataclass(frozen=True)

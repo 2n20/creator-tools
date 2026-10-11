@@ -45,7 +45,7 @@ def snapshot(position="0"):
 
 def intent(identity="one", fraction="1", quantity="1", now=1000):
     return {"id": identity, "fraction": fraction, "quantity": quantity, "arrivalPrice": "100", "createdMs": now,
-            "deadlineMs": now + 60000, "market": "BTC", "sourceBar": 0, "policy": "test", "sizeDecimals": 5, "reason": "test"}
+            "deadlineMs": now + 60000, "market": "BTC", "sourceBar": 0, "policy": "test", "reason": "test"}
 
 
 class MemoryJournal:
@@ -576,6 +576,17 @@ class AdapterEvidenceTests(unittest.TestCase):
         self.adapter.exchange = Mock(side_effect=AssertionError())
         result = self.adapter.submit_child(self.child, self.state, intent(), admission)
         self.assertEqual(result["classification"], "not_submitted")
+        self.adapter.exchange.assert_not_called()
+
+    def test_precision_change_rejects_planned_child_before_loading_signer(self):
+        target = intent()
+        admission = Admission(lambda: 2000)
+        admission.feed_ready.set()
+        admission.generation = target["id"]
+        self.adapter.observe = Mock(return_value={"snapshot": {**snapshot(), "decimals": 4}, "position": "0"})
+        self.adapter.exchange = Mock(side_effect=AssertionError("signer read"))
+        result = self.adapter.submit_child(self.child, execution_state(1000), target, admission)
+        self.assertEqual(result, {"classification": "not_submitted", "reason": "PRECISION_UNAVAILABLE"})
         self.adapter.exchange.assert_not_called()
 
     def test_cancellation_only_calls_exact_verified_owned_oid(self):

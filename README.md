@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.4.3'
+python -m pip --isolated install '2n20==0.5.0'
 2n20 --version
 ```
 
@@ -27,7 +27,7 @@ Generate a new project in a directory that does not exist:
 2n20 init my-strategy --template hyperliquid-python
 ```
 
-Follow the installation and paper-run commands that `init` prints. It copies the bundled template and records its version. It does not install dependencies, create keys or start trading. Inspect the [template source](https://github.com/2n20/creator-tools/tree/main/src/twon20/templates/hyperliquid-python) before using it. Review future template changes before updating your generated project.
+Follow the installation and connection commands that `init` prints. It copies the bundled template and records its version. It does not install dependencies, create keys or start trading. Inspect the [template source](https://github.com/2n20/creator-tools/tree/main/src/twon20/templates/hyperliquid-python) before using it. Review future template changes before updating your generated project.
 
 For an existing strategy, continue in its authorized project directory. Never search unrelated projects or read their credentials to discover access.
 
@@ -55,11 +55,11 @@ Use `cursor`, `claude` or `hermes` instead of `codex` for those agents. Codex in
 
 Use `2n20-strategy` to adapt an existing backtest or bot, or develop the starter before a vault exists. The guide keeps your signals, sizing and research tools, and helps add only the operating modules you need. For example:
 
-> Use 2n20-strategy to adapt this project's backtested strategy for Hyperliquid and a future 2n20 vault. Keep its signals and sizing. Use the starter feed and limit chaser where operating code is missing. Verify paper behavior first.
+> Use 2n20-strategy to adapt this project's backtested strategy for Hyperliquid and a future 2n20 vault. Keep its signals and sizing. Use the starter feed and limit chaser where operating code is missing. Preserve my tests and help configure the project.
 
 Use `2n20-setup` when you have a vault. Give your agent the vault URL, project location and machine. It uses the CLI through authorized terminal access; you open the approval link and use your wallet. A project prepared before vault creation is the same existing project in Step 2.
 
-Copy Step 2 into your coding agent to prepare the approval link. Approve with your wallet on the website and wait for Step 3 to open. Then copy Step 3's connection instructions into the same agent conversation to finish setup. The two requests select the setup skill's corresponding guides. The bundle retains both complete guides, including native multiple-choice questions, prior-answer reuse and continuation with the same key. Your agent can read the released files in the current conversation if skill discovery is unavailable. Upgrading the CLI does not replace an installed skill; preserve differing local copies and use the release linked in the request or export it to a new comparison directory.
+Copy Step 2 into your coding agent to prepare the approval link. Approve with your wallet on the website and wait for Step 3 to open. Then copy Step 3's connection instructions into the same agent conversation to finish setup. The two requests select the setup skill's corresponding guides. The guides retain native multiple-choice questions, prior-answer reuse and continuation with the same key. Step 2 pauses for website approval and the copied Step 3 request. Setup requires configuration and a read-only connection check; paper trading and live orders are not prerequisites. Your agent can read the released files in the current conversation if skill discovery is unavailable. Upgrading the CLI does not replace an installed skill; preserve differing local copies and use the release linked in the request or export it to a new comparison directory.
 
 For another client, export a portable guide:
 
@@ -70,19 +70,19 @@ For another client, export a portable guide:
 
 Give the complete exported directory to the client, including `SKILL.md` and any `references` files. Execution requires its own authorized terminal and filesystem tools. No MCP server is required for the local coding-agent flow. See [Agent skills](https://2n20.org/docs/agents) for installation options.
 
-After your project's read-only connection and paper checks pass, your agent reports those results with the retained key. The website completes Step 3 automatically. To report the checks yourself:
+After configuring your project and passing its read-only connection check, your agent reports success with the retained key. The website completes Step 3 automatically. To report the checks yourself:
 
 ```sh
-2n20 complete-setup --vault '<official vault page URL>' --directory '<retained setup directory>' --connection-checked --paper-checked --json
+2n20 complete-setup --vault '<official vault page URL>' --directory '<retained setup directory>' --connection-checked --json
 ```
 
-Use the flags only after both checks succeed. This sends a signed public setup report, never your private key or project files. It submits no blockchain transaction and does not enable live trading. Reporting can be retried from the same directory without replacing the key.
+Report completion only after configuration and a successful connection check. This sends a signed public setup report, never your private key or project files. It submits no blockchain transaction and does not enable live trading. Reporting can be retried from the same directory without replacing the key.
 
 ## Keep setup and execution separate
 
 Use `setup`, `onboard`, `renew`, `config`, `status`, `check-consent`, `init`, `skill export` and `skill install` without submitting trades or collateral transfers. Keep `strategy.key` private on the strategy machine. Public configuration names its path without embedding the key. Agents must never inspect, print, upload or commit private-key contents. The CLI sets ignore rules and restrictive file permissions before creating a key.
 
-Use paper mode without a signing key. Read its results as simulated fills and P&L. For live execution, the starter uses the official Hyperliquid SDK with the approved trading key as signer and the verified trading account as `account_address`. It does not use the SDK's legacy `vault_address`.
+The optional developer simulation needs no signing key. Its results are simulated fills and P&L. For live execution, the starter uses the official Hyperliquid SDK with the approved trading key as signer and the verified trading account as `account_address`. It does not use the SDK's legacy `vault_address`.
 
 Before a live test, choose the market, side, maximum notional, slippage and time limit. Authorize that plan as a separate action; key approval does not authorize orders. Check usable perpetual collateral, since spot USDC is a separate balance. The starter refuses insufficient margin, unavailable approval, conflicting account state and unsupported account modes. Read the [starter README](https://github.com/2n20/creator-tools/blob/main/src/twon20/templates/hyperliquid-python/README.md) before considering a live plan. You decide whether to install and start a service.
 

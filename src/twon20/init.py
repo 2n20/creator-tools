@@ -87,10 +87,6 @@ def project_commands(directory):
         "installPublishedCli": f".venv/bin/python -m pip --isolated install 2n20=={__version__}",
         "onboard": ".venv/bin/2n20 onboard --vault '<official vault page URL>' --json",
         "checkConnection": ".venv/bin/python runner.py check --vault '<official vault page URL>' --directory '<retained setup directory>' --config config.public.example.json",
-        "paper": ".venv/bin/python runner.py",
-        "continuousPaper": ".venv/bin/python runner.py run --mode paper --feed public --config config.public.example.json",
-        "runtimeFixture": ".venv/bin/python runner.py run --mode paper --feed fixture --max-bars 30",
-        "paperPublicData": ".venv/bin/python runner.py paper --public-data --market BTC",
     }
 
 
@@ -166,7 +162,7 @@ def init_project(directory: Path, template=TEMPLATE):
         return {"schema": "2n20-project-init-v1", "initialized": True, "directory": str(directory), "template": template, "templateVersion": __version__,
                 "publicManifestFile": str(directory / MANIFEST), "files": sorted([*assets, MANIFEST]),
                 "commands": project_commands(directory), "keysCreated": False, "dependenciesInstalled": False,
-                "nextAction": "Create the environment and install reviewed requirements. Run the paper example, then onboard with your vault link on this strategy machine. Keep live execution disabled until separately authorized."}
+                "nextAction": "Create the environment and install reviewed requirements. Review the public configuration, then onboard with your vault link on this strategy machine. Keep live execution disabled until separately authorized."}
     finally:
         try:
             if staged is not None:

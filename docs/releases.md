@@ -23,7 +23,7 @@ Build twice with the same SOURCE_DATE_EPOCH and compare hashes. Install the sdis
 
 ## Trusted Publishing
 
-The setup skill includes `references/step-2.md` and `references/step-3.md`. Preserve the approved instruction text during delivery changes. `test_setup_guides.py` checks its recorded digests, native question instructions and installed/exported reference files. Any change to these guides needs an explicit behavior review; do not update the digests just to make a delivery change pass.
+The setup skill includes `references/step-2.md` and `references/step-3.md`. Preserve the approved instruction text during delivery changes. Release 0.5.0 implements the founder-approved connection-only completion and optional live test, so its reviewed guide changes remove the paper requirement while retaining the two-copy wallet handoff and native questions. `test_setup_guides.py` checks its recorded digests, native question instructions and installed/exported reference files. Any change to these guides needs an explicit behavior review; do not update the digests just to make a delivery change pass.
 
 Configure an existing-project GitHub publisher on PyPI, without an API token:
 

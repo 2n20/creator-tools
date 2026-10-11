@@ -13,16 +13,16 @@ from .onboarding import acquire_lock
 from .rpc import Rpc, TransientReadError, request_json
 from .status import status
 
-SCHEMA = "2n20-software-setup-v1"
+SCHEMA = "2n20-software-setup-v2"
 ENDPOINT = "https://2n20.org/api/creator-setup"
 FIELDS = [("deploymentId", "string"), ("vaultAddress", "address"), ("ownerAddress", "address"),
           ("coreAccount", "address"), ("tradingKey", "address"), ("keyNonce", "uint256"),
-          ("connectionChecked", "bool"), ("paperChecked", "bool"), ("issuedAt", "uint64"), ("deadline", "uint64")]
+          ("connectionChecked", "bool"), ("issuedAt", "uint64"), ("deadline", "uint64")]
 
 
 def typed_data(report):
     message = {name: int(report[name]) if kind.startswith("uint") else report[name] for name, kind in FIELDS}
-    return {"domain": {"name": "2n20 Software Setup", "version": "1", "chainId": 999, "verifyingContract": report["vaultAddress"]},
+    return {"domain": {"name": "2n20 Software Setup", "version": "2", "chainId": 999, "verifyingContract": report["vaultAddress"]},
             "primaryType": "SoftwareSetup",
             "types": {"EIP712Domain": [{"name": "name", "type": "string"}, {"name": "version", "type": "string"},
                                      {"name": "chainId", "type": "uint256"}, {"name": "verifyingContract", "type": "address"}],
@@ -30,9 +30,9 @@ def typed_data(report):
             "message": message}
 
 
-def complete_setup(link, directory, connection_checked, paper_checked, submit=None, now=None):
-    if connection_checked is not True or paper_checked is not True:
-        raise SetupError("SOFTWARE_CHECKS_REQUIRED", "Run the project's read-only connection and paper checks successfully before reporting them.")
+def complete_setup(link, directory, connection_checked, submit=None, now=None):
+    if connection_checked is not True:
+        raise SetupError("SOFTWARE_CHECKS_REQUIRED", "Configure the project and pass its read-only connection check before reporting completion.")
     found = discover(link)
     output = open_output(directory)
     lock = None
@@ -52,7 +52,7 @@ def complete_setup(link, directory, connection_checked, paper_checked, submit=No
             raise SetupError("CLOCK_MISMATCH", "Check the machine clock before reporting software setup.")
         report = {"schema": SCHEMA, "chainId": 999, "deploymentId": generation, "vaultAddress": found.vault,
                   "ownerAddress": found.owner, "coreAccount": found.trading_account, "tradingKey": found.requested_key,
-                  "keyNonce": str(found.nonce), "connectionChecked": True, "paperChecked": True,
+                  "keyNonce": str(found.nonce), "connectionChecked": True,
                   "issuedAt": str(issued), "deadline": str(issued + 900)}
         wallet = load_key(output, metadata)
         report["signature"] = "0x" + wallet.sign_message(encode_typed_data(full_message=typed_data(report))).signature.hex().removeprefix("0x")
@@ -73,7 +73,7 @@ def complete_setup(link, directory, connection_checked, paper_checked, submit=No
             raise SetupError("INVALID_SETUP_ACKNOWLEDGEMENT", "The service did not acknowledge the current software setup. Retry from the same directory; do not claim setup is complete.")
         output.atomic_json("setup-completion.public.json", completion)
         return {"schema": "2n20-setup-completion-result-v1", "setupComplete": True, "completion": completion,
-                "nextAction": "The vault page completes Step 3 automatically. Continue developing your strategy; enable live trading separately when you choose."}
+                "nextAction": "The vault page completes Step 3 automatically. Your strategy is configured and connected. An optional bounded live test requires a separate approved plan. Setup does not start trading."}
     finally:
         if lock is not None:
             os.close(lock)

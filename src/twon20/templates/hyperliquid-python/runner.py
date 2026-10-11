@@ -88,7 +88,7 @@ def run(args):
                     "market": config["market"], "interval": config["interval"], "sizeDecimals": snapshot["decimals"],
                     "spotUsdcAvailable": str(snapshot["spot_available"]), "perpUsdcAvailable": str(snapshot["perp_available"]),
                     "accountHasConflicts": bool(snapshot["positions"] or snapshot["orders"]),
-                    "nextAction": "Run paper checks with this same configuration. After they pass, report setup completion with 2n20 complete-setup using the retained setup directory. Live trading requires separate authorization."}, 0
+                    "nextAction": "The read-only connection check passed. Report setup completion with 2n20 complete-setup --connection-checked using the retained setup directory. An optional bounded live test requires separate authorization."}, 0
         if args.command == "recovery":
             state_directory = Path(args.state_directory).expanduser().absolute()
             if not state_directory.exists():

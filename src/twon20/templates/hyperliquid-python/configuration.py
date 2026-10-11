@@ -22,12 +22,10 @@ def load_config(path):
         if len(raw.encode()) > 16384:
             raise ValueError()
         config = json.loads(raw)
-        required = {"schema", "market", "interval", "sizeDecimals", "strategy", "execution", "reporting"}
-        if set(config) != required or config["schema"] != "2n20-runtime-config-v1":
+        required = {"schema", "market", "interval", "strategy", "execution", "reporting"}
+        if set(config) != required or config["schema"] != "2n20-runtime-config-v2":
             raise ValueError()
         if not re.fullmatch(r"[A-Z][A-Z0-9]{0,19}", config["market"]) or config["interval"] not in INTERVALS:
-            raise ValueError()
-        if type(config["sizeDecimals"]) is not int or not 0 <= config["sizeDecimals"] <= 6:
             raise ValueError()
         if set(config["strategy"]) != {"window", "multiplier"}:
             raise ValueError()
