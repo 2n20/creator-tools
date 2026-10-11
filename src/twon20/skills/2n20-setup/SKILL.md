@@ -3,6 +3,8 @@ name: 2n20-setup
 description: Connect an existing strategy or create a Hyperliquid Python starter on a 2n20 creator's strategy machine, resume public wallet approval, and verify access using the official CLI.
 ---
 
+For strategy development or adapting a backtest before a vault exists, use the bundled `2n20-strategy` skill. Keep that work in paper mode and return here when a vault is available.
+
 Use the creator's supplied host and project path. Do not ask them to choose either again. If they already have a strategy, work in that existing project. If they have no project, offer the official Hyperliquid Python starter and obtain their choice before creating it. If host access is unresolved, prepare the exact command and ask for that missing action. Do not generate a trading key on another machine.
 
 For a requested starter without a chosen location, ask **Where should I create the starter?** Offer **Create a new folder for me (Recommended)** and **I will choose the location**, with free-text input. When the creator asks you to create the folder, choose a descriptive name under their home directory on the authorized machine, such as **2n20-vault-<short vault address>**. Check the proposed path yourself; do not ask whether it is "unused". Use a supplied path when provided. Once folder creation is authorized and the path is absent, proceed without asking for the same permission again. If the path exists or cannot be verified, resolve that conflict without reading or changing its contents. Let **2n20 init** create the destination; do not pre-create an empty project folder with mkdir, since init refuses existing directories. Create any missing parent only within the authorized location.

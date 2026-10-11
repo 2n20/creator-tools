@@ -60,6 +60,7 @@ where = ["src"]
 twon20 = [
   "deployments.json",
   "skills/2n20-setup/SKILL.md",
+  "skills/2n20-strategy/SKILL.md",
   "templates/hyperliquid-python/*.py",
   "templates/hyperliquid-python/*.md",
   "templates/hyperliquid-python/*.public.json",

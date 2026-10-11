@@ -1,0 +1,29 @@
+---
+name: 2n20-strategy
+description: Adapt an existing backtest or bot into a modular Hyperliquid strategy for 2n20, validate paper behavior, and prepare its later vault connection.
+---
+
+Work in the creator's authorized project and machine. Preserve their strategy logic, parameters and risk choices. Inspect safe source and tests first; identify the signal, sizing, portfolio state, data assumptions and execution interfaces. Do not replace an existing strategy with a demonstration or imply profitable results. Ask only for missing non-secret decisions that affect implementation.
+
+For a new project, use the official `2n20 init '<new project directory>' --template hyperliquid-python --json` command after the creator chooses the project location. Init requires an absent destination. Read the generated starter README for exact supported commands and dependency installation instructions. Do not invent runtime flags or install an unpublished release.
+
+Adapt incrementally around these modules, retaining existing equivalents where appropriate:
+
+- `models.py`: explicit market observations, strategy decisions and bounded order intentions.
+- `feed.py`: Hyperliquid public data, timestamps and validity checks; keep stale or missing data from producing orders.
+- The strategy module: the creator's existing signal and sizing logic, independently testable with recorded or synthetic inputs.
+- `runtime.py`: feed/strategy/executor coordination and bounded lifecycle; paper operation first.
+- `executor.py`: separate paper and live execution, account binding, limits and recovery; strategy code must not directly send orders.
+- `reporting.py`: public decisions and outcomes, with no secrets or misleading execution claims.
+
+Compare adapted signals and sizing with the original backtest or bot on the same representative inputs. Explain intentional differences such as fill assumptions, fees, latency and data timing. Paper results do not establish live execution or profitability. Keep changes scoped and reviewable. Follow the starter README for actual paper, read-only check and runtime commands.
+
+Before a vault exists, develop and validate the strategy locally in paper mode. Do not run `2n20 onboard`, generate a trading key or require funding just to build a strategy. When the creator later reaches vault Step 2, choose the existing-project path and retain this project. Use the bundled `2n20-setup` guidance for resumable onboarding, creator-wallet approval, verified account binding and completion reporting. If that guidance is unavailable, export it with `2n20 skill export --name 2n20-setup --directory '<new skill directory>'` and read it before setup.
+
+Resume the same setup directory and retained key after interruption. Never make a replacement key to bypass conflicts or outages. Use the verified `tradingAccount` as the Hyperliquid account; it is not an SDK native `vault_address`. Keep discovery and key handling in the CLI and existing local secret loader.
+
+Never read, paste, upload or log private keys, wallet seeds, `.env*`, `config.json`, `notes.txt` or wallet backups. Work from loader interfaces and public configuration. Do not inspect unrelated strategies, services or agent configuration.
+
+Keep live execution disabled until separately and explicitly authorized with concrete market, size, slippage, duration and collateral bounds. Setup approval does not authorize orders, transfers, service restarts or automatic wallet confirmation. Preserve recovery state and stop when the execution result is uncertain; do not retry beyond the authorization.
+
+This is portable guidance. Other clients, including ChatGPT or Grok, can read an exported copy; running commands requires their own authorized local tools. Do not invent an installation directory, connector or execution capability for those clients.

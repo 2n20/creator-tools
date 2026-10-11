@@ -15,7 +15,7 @@ from .files import load_key, load_setup, new_output, open_output, read_public, r
 from .rpc import Rpc
 from .status import status
 from .onboarding import onboard
-from .skill_export import export_skill
+from .skill_export import SKILL_NAMES, export_skill, install_skills
 from .init import init_project
 from .completion import complete_setup
 
@@ -33,11 +33,17 @@ def parser() -> argparse.ArgumentParser:
     guided.add_argument("--directory", type=Path, help="Explicitly choose a new or existing setup directory; otherwise use the same vault-scoped directory here")
     guided.add_argument("--wait", type=int, default=0, help="Bounded polling budget in seconds, from 0 to 300 (default 0)")
     guided.add_argument("--json", action="store_true", help="Print the stable public stage, exit code and resume instructions")
-    skill = commands.add_parser("skill", help="Explicitly export the bundled portable 2n20-setup skill")
+    skill = commands.add_parser("skill", help="Explicitly export or install bundled portable skills")
     skill_commands = skill.add_subparsers(dest="skill_command", required=True)
     export = skill_commands.add_parser("export")
     export.add_argument("--directory", required=True, type=Path, help="A new directory to receive SKILL.md; its parent must exist")
     export.add_argument("--json", action="store_true")
+    export.add_argument("--name", choices=SKILL_NAMES, default="2n20-setup")
+    install = skill_commands.add_parser("install")
+    install.add_argument("--agent", required=True, choices=("codex", "cursor", "claude", "hermes"))
+    install.add_argument("--project", type=Path, help="Existing project (default: current directory); unsupported for Hermes")
+    install.add_argument("--name", choices=(*SKILL_NAMES, "all"), default="all")
+    install.add_argument("--json", action="store_true")
     setup = commands.add_parser("setup", help="Create a fresh private key locally and its public consent file")
     setup.add_argument("--vault", required=True, help="The https://2n20.org/vaults/... link copied from Step 2")
     setup.add_argument("--output", type=Path, help="A new private directory under an existing parent; defaults to a unique directory here")
@@ -100,7 +106,9 @@ def run(args) -> tuple[dict, int]:
     if args.command == "onboard":
         return onboard(args.vault, args.directory, args.wait)
     if args.command == "skill":
-        return export_skill(args.directory), 0
+        if args.skill_command == "install":
+            return install_skills(args.agent, args.project, args.name), 0
+        return export_skill(args.directory, args.name), 0
     if args.command == "setup":
         return setup(args), 0
     if args.command == "renew":
@@ -155,7 +163,9 @@ def main(argv=None) -> int:
             if result.get("resumeCommand"):
                 print(f"Resume: {result['resumeCommand']}")
         elif args.command == "skill":
-            print(f"Portable skill: {result['skillFile']}")
+            print(f"Bundled skills version: {result['version']}")
+            for path in result["files"]:
+                print(path)
             print(result["nextAction"])
         elif args.command in ("setup", "renew"):
             print(f"Public consent file: {result['publicConsentFile']}")

@@ -14,3 +14,6 @@ __pycache__/
 2n20-*/
 !src/twon20/skills/2n20-setup/
 !src/twon20/skills/2n20-setup/SKILL.md
+
+!src/twon20/skills/2n20-strategy/
+!src/twon20/skills/2n20-strategy/SKILL.md
