@@ -3,6 +3,7 @@ import copy
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
 import hashlib
 
+from models import validate_market
 from risk import Stop, number
 
 
@@ -13,6 +14,7 @@ def execution_state(now_ms):
 
 
 def plan_child(intent, state, snapshot, limits, now_ms):
+    validate_market(intent, snapshot)
     position, target = number(state["position"], signed=True), number(intent["quantity"], signed=True)
     delta = target - position
     if not delta:
@@ -23,8 +25,6 @@ def plan_child(intent, state, snapshot, limits, now_ms):
     urgent = limits["iocAfterSeconds"] is not None and now_ms - intent["createdMs"] >= limits["iocAfterSeconds"] * 1000
     near = snapshot["ask"] if (buy and urgent) or (not buy and not urgent) else snapshot["bid"]
     decimals = snapshot["decimals"]
-    if decimals != intent["sizeDecimals"]:
-        raise Stop("PRECISION_UNAVAILABLE", "The configured precision differs from current market metadata.")
     places = max(0, min(6 - decimals, 4 - near.adjusted()))
     price = near.quantize(Decimal(1).scaleb(-places), rounding=ROUND_DOWN if buy else ROUND_UP)
     reference = number(intent["arrivalPrice"])

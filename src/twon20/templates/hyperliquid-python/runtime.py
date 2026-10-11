@@ -4,60 +4,18 @@ from decimal import Decimal, ROUND_DOWN
 import hashlib
 import json
 from pathlib import Path
-import re
 import signal
 import time
 
+from configuration import load_config
 from executor import LimitChaser, PaperExecutor, execution_state
 from feed import FixtureFeed, HyperliquidCandleFeed
-from models import Bar, INTERVALS
+from models import Bar, INTERVALS, validate_market
 from reporting import ConsoleReporter, TelegramReporter
 from risk import Stop, number
 from runtime_io import Admission, SerialIO
 from runtime_journal import MAX_HISTORY, MAX_REPORTS, RuntimeJournal
 from strategy import BandBreakout
-
-
-def load_config(path):
-    path = Path(path)
-    # Public configuration is deliberately named; never load generic config.json
-    # or any environment/credential file through this public config interface.
-    if not path.name.endswith(".public.json") and path.name != "config.public.example.json":
-        raise Stop("PUBLIC_CONFIG_REQUIRED", "Use config.public.example.json or a reviewed *.public.json configuration.")
-    try:
-        with path.open(encoding="utf-8") as stream:
-            raw = stream.read(16385)
-        if len(raw.encode()) > 16384:
-            raise ValueError()
-        config = json.loads(raw)
-        required = {"schema", "market", "interval", "sizeDecimals", "strategy", "execution", "reporting"}
-        if set(config) != required or config["schema"] != "2n20-runtime-config-v1":
-            raise ValueError()
-        if not re.fullmatch(r"[A-Z][A-Z0-9]{0,19}", config["market"]) or config["interval"] not in INTERVALS:
-            raise ValueError()
-        if type(config["sizeDecimals"]) is not int or not 0 <= config["sizeDecimals"] <= 6:
-            raise ValueError()
-        if set(config["strategy"]) != {"window", "multiplier"}:
-            raise ValueError()
-        BandBreakout(**config["strategy"])
-        limits = config["execution"]
-        if set(limits) != {"targetNotional", "childNotional", "slippageBps", "chaseSeconds", "maxChildren", "requoteSeconds", "iocAfterSeconds", "depthFraction", "dailyVolumeFraction"}:
-            raise ValueError()
-        if not 0 < number(limits["childNotional"]) <= number(limits["targetNotional"]) <= 1_000_000:
-            raise ValueError()
-        for key in ("depthFraction", "dailyVolumeFraction"):
-            if limits[key] is not None and not 0 < number(limits[key]) <= 1:
-                raise ValueError()
-        for key, low, high in (("slippageBps", 1, 500), ("chaseSeconds", 5, 3600), ("maxChildren", 1, 100), ("requoteSeconds", 1, 60)):
-            if type(limits[key]) is not int or not low <= limits[key] <= high:
-                raise ValueError()
-        if limits["iocAfterSeconds"] is not None and (type(limits["iocAfterSeconds"]) is not int or not 1 <= limits["iocAfterSeconds"] < limits["chaseSeconds"]):
-            raise ValueError()
-        if set(config["reporting"]) != {"telegram"} or type(config["reporting"]["telegram"]) is not bool:
-            raise ValueError()
-        return config
-    except (OSError, ValueError, KeyError, TypeError):
-        raise Stop("PUBLIC_CONFIG_INVALID", "Use the reviewed public example schema with explicit strategy and execution limits.") from None
 
 
 def fingerprint(config):
@@ -200,6 +158,9 @@ class Runtime:
                 if self.admission.stopping.is_set():
                     break
                 bar = batch.bars[index]
+                if not isinstance(bar, Bar):
+                    raise Stop("CANDLE_INVALID", "A feed must return validated Bar observations.")
+                bar = Bar.parse(bar.public(), self.config["market"], self.config["interval"])
                 if self.state["cursor"] is not None and bar.open_ms <= self.state["cursor"]:
                     previous = next((known for known in self.history if known.open_ms == bar.open_ms), None)
                     if previous is not None and previous != bar:
@@ -334,6 +295,7 @@ def run_command(args):
             adapter = RuntimeAdapter(access)
             if not args.execute:
                 snapshot = adapter.snapshot(config["market"])
+                validate_market(config, snapshot)
                 return {"schema": "2n20-runner-result-v1", "stage": "runtime_preview", "scope": access.scope,
                         "config": config, "sessionSeconds": args.max_seconds, "ownedCleanupGraceSeconds": 60,
                         "newSession": args.new_session, "recoverOnly": args.recover_only, "ordersSubmitted": 0, "signerLoaded": False,

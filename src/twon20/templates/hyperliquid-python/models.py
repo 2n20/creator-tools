@@ -10,6 +10,16 @@ INTERVALS = {"1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000,
              "30m": 1_800_000, "1h": 3_600_000, "4h": 14_400_000}
 
 
+def validate_market(settings, snapshot):
+    if snapshot.get("market") != settings["market"]:
+        raise Stop("MARKET_MISMATCH", "Public market data does not match the configured market.")
+    decimals = snapshot.get("decimals")
+    if type(decimals) is not int or not 0 <= decimals <= 6:
+        raise Stop("PRECISION_UNAVAILABLE", "Current market size precision is unavailable.")
+    if decimals != settings["sizeDecimals"]:
+        raise Stop("PRECISION_UNAVAILABLE", f"Configured sizeDecimals is {settings['sizeDecimals']}; current market metadata requires {decimals}. Review the public configuration before continuing.")
+
+
 @dataclass(frozen=True)
 class Bar:
     market: str

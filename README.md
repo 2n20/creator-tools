@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.4.2'
+python -m pip --isolated install '2n20==0.4.3'
 2n20 --version
 ```
 
@@ -45,7 +45,7 @@ The CLI automatically retries temporary RPC and approval-link failures within a 
 
 ## Use your coding agent
 
-From your strategy project, install both guides for your coding agent:
+For a new starter, run `2n20 init` first, then enter the generated project. From that project or your existing strategy directory, install both guides for your coding agent:
 
 ```sh
 2n20 skill install --agent codex

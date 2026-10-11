@@ -507,10 +507,10 @@ class AdapterTests(unittest.TestCase):
         self.assertNotIn("CONFIDENTIAL", str(failure.exception))
 
     def test_read_only_check_and_both_previews_never_load_signer_or_journal(self):
-        argv_base = ["--vault", LINK, "--directory", "/placeholder/setup", "--market", "BTC"]
-        for name, extra in (("check", []), ("live-smoke", ["--side", "buy", "--max-notional", "12", "--slippage-bps", "20", "--duration-seconds", "30"]), ("collateral", ["--amount", "5"])):
+        argv_base = ["--vault", LINK, "--directory", "/placeholder/setup"]
+        for name, extra in (("check", ["--config", str(Path(__file__).resolve().parents[1] / "config.public.example.json")]), ("live-smoke", ["--market", "BTC", "--side", "buy", "--max-notional", "12", "--slippage-bps", "20", "--duration-seconds", "30"]), ("collateral", ["--amount", "5"])):
             access = Mock(); access.scope = SCOPE; access.directory = Path("/placeholder/setup"); access.vault = LINK
-            adapter = Mock(); adapter.snapshot.return_value = snapshot()
+            adapter = Mock(); adapter.snapshot.return_value = snapshot(decimals=5)
             with patch("adapter.Access", return_value=access), patch("adapter.Adapter", return_value=adapter), patch("journal.Journal", side_effect=AssertionError("journal creation")):
                 result, code = run(parser().parse_args([name, *argv_base, *extra]))
             self.assertEqual(code, 0)

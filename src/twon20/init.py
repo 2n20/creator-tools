@@ -18,7 +18,7 @@ from .files import Output, secure_directory
 TEMPLATE = "hyperliquid-python"
 PUBLIC_SOURCE = "https://github.com/2n20/creator-tools"
 MANIFEST = "2n20-template.public.json"
-REQUIRED_ASSETS = frozenset({"README.md", "runner.py", "strategy.py", "adapter.py", "risk.py", "journal.py", "execution.py", "models.py", "feed.py", "executor.py", "runtime.py", "runtime_io.py", "runtime_adapter.py", "runtime_journal.py", "reporting.py", "requirements-runner.txt", "config.public.example.json", "fixture.candles.public.json", "dependency-review.json"})
+REQUIRED_ASSETS = frozenset({"README.md", "runner.py", "strategy.py", "adapter.py", "risk.py", "journal.py", "execution.py", "models.py", "configuration.py", "feed.py", "executor.py", "runtime.py", "runtime_io.py", "runtime_adapter.py", "runtime_journal.py", "reporting.py", "requirements-runner.txt", "config.public.example.json", "fixture.candles.public.json", "dependency-review.json"})
 
 
 def approved_asset(name):
@@ -86,7 +86,7 @@ def project_commands(directory):
         "installReviewedRunner": ".venv/bin/python -m pip --isolated install --require-hashes --only-binary=:all: -r requirements-runner.txt",
         "installPublishedCli": f".venv/bin/python -m pip --isolated install 2n20=={__version__}",
         "onboard": ".venv/bin/2n20 onboard --vault '<official vault page URL>' --json",
-        "checkConnection": ".venv/bin/python runner.py check --vault '<official vault page URL>' --directory '<retained setup directory>' --market BTC",
+        "checkConnection": ".venv/bin/python runner.py check --vault '<official vault page URL>' --directory '<retained setup directory>' --config config.public.example.json",
         "paper": ".venv/bin/python runner.py",
         "continuousPaper": ".venv/bin/python runner.py run --mode paper --feed public --config config.public.example.json",
         "runtimeFixture": ".venv/bin/python runner.py run --mode paper --feed fixture --max-bars 30",

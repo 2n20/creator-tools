@@ -15,7 +15,7 @@ Read [Step 2 instructions](references/step-2.md), then follow the CLI procedure 
 
 The creator pastes Step 3's connection instructions after completing wallet approval on the website, normally in the same conversation as Step 2. Read [Step 3 instructions](references/step-3.md). Resume the retained project and key, check approval before configuration, and complete the connection, paper and reporting checks below. Ask only for missing details; do not restart project selection or generate a replacement key. If approval is still needed, resume its existing flow.
 
-Use these guides from creator-tools 0.4.2. Installing or upgrading the CLI does not update a previously installed skill. If a local copy differs, preserve it and read this release's skill and references from the public source, or export this version to a new comparison directory. If the current agent session does not discover an installed skill, read its files directly in the same conversation. Read relative links beside this file, or against this file's released source URL. If a required guide cannot be read, explain the missing file and stop rather than reconstructing its instructions.
+Use these guides from creator-tools 0.4.3. Installing or upgrading the CLI does not update a previously installed skill. If a local copy differs, preserve it and read this release's skill and references from the public source, or export this version to a new comparison directory. If the current agent session does not discover an installed skill, read its files directly in the same conversation. Read relative links beside this file, or against this file's released source URL. If a required guide cannot be read, explain the missing file and stop rather than reconstructing its instructions.
 
 ## CLI procedure
 
@@ -45,6 +45,8 @@ Init refuses an existing directory, including an empty one. It writes the review
 .venv/bin/python runner.py run --feed fixture --max-bars 30
 .venv/bin/python runner.py run --feed public --max-seconds 90
 ```
+
+Install project-local agent skills only after init has created the starter directory. Read this guide directly while preparing the project. Do not pre-create the destination to install skills.
 
 Both commands default to paper mode and require no vault or trading key. The fixture checks the local loop; the public feed checks Hyperliquid connectivity. The older finite example remains available as `runner.py paper`. Read the generated README before adapting the demonstration. Preserve generated source edits; rerunning init is not an upgrade mechanism.
 
@@ -91,8 +93,10 @@ Inspect safe source files to identify the existing strategy's supported Hyperliq
 Configure the existing or generated strategy using `tradingAccount` as its Hyperliquid account address and its own local secret loader. A 2n20 trading account is not an SDK native vault: do not pass it as `vault_address`. Do not fall back to a legacy key, the creator wallet or the key's own account when the verified binding is unavailable. Keep `vault` and `approvalContract` distinct. For the generated starter, run its read-only connection check:
 
 ```sh
-.venv/bin/python runner.py check --vault '<official vault page URL>' --directory '<retained setup directory>' --market BTC
+.venv/bin/python runner.py check --vault '<official vault page URL>' --directory '<retained setup directory>' --config config.public.example.json
 ```
+
+Use the same reviewed public configuration file for the starter connection check and its paper/live runtime. Replace the example filename above when the project uses another public configuration. The check verifies its selected market and size precision; do not add a separate market override. Keep an older or customized starter intact and inspect its supported commands before adapting it.
 
 For an existing strategy, use its supported read-only check when available and permitted, then paper operation. CLI access verification, a connection check and paper behavior prove different things; none proves live execution or profitability.
 

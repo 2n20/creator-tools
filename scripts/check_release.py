@@ -34,6 +34,7 @@ def main():
                          "skills/2n20-setup/references/step-2.md", "skills/2n20-setup/references/step-3.md",
                          "templates/hyperliquid-python/feed.py", "templates/hyperliquid-python/executor.py",
                          "templates/hyperliquid-python/runtime.py", "templates/hyperliquid-python/runner.py",
+                         "templates/hyperliquid-python/configuration.py",
                          "templates/hyperliquid-python/requirements-runner.txt"):
             assert any(name.endswith(required) for name in names), required
     with tempfile.TemporaryDirectory(prefix="creator-tools-artifact-") as temporary:

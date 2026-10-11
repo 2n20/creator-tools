@@ -19,6 +19,21 @@ class SkillInstallTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
 
+    def test_new_project_must_be_initialized_before_installing_skills(self):
+        from twon20.init import init_project
+        project = self.root / "new-project"
+        output = io.StringIO()
+        with contextlib.redirect_stderr(output):
+            code = main(["skill", "install", "--agent", "codex", "--project", str(project)])
+        self.assertEqual(code, 1)
+        self.assertIn("PROJECT_NOT_FOUND", output.getvalue())
+        self.assertIn("run 2n20 init before installing skills", output.getvalue())
+        self.assertFalse(project.exists())
+        init_project(project)
+        result = install_skills("codex", project)
+        self.assertEqual(len(result["files"]), 4)
+        self.assertTrue((project / "runner.py").is_file())
+
     def test_agent_directories_idempotence_and_unrelated_files(self):
         for agent, folder in (("codex", ".agents"), ("cursor", ".cursor"), ("claude", ".claude")):
             with self.subTest(agent=agent):

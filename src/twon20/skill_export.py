@@ -140,7 +140,10 @@ def install_skills(agent: str, project: Path | None = None, name="all"):
             os.close(parent)
     elif agent in AGENT_PATHS:
         project = (project or Path.cwd()).expanduser().absolute()
-        parent = secure_directory(project)
+        try:
+            parent = secure_directory(project)
+        except FileNotFoundError:
+            raise SetupError("PROJECT_NOT_FOUND", "Skill installation needs an existing project directory. For a new starter, run 2n20 init before installing skills there. Do not create an empty project folder first. For an existing project, check its path.") from None
         base = project / AGENT_PATHS[agent]
         try:
             root = _directory(parent, AGENT_PATHS[agent])

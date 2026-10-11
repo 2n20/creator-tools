@@ -17,7 +17,8 @@ from executor import LimitChaser, execution_state, plan_child
 from feed import FixtureFeed, HyperliquidCandleFeed
 from models import Bar, BarBatch, Target
 from risk import Stop
-from runtime import Runtime, load_config
+from configuration import load_config
+from runtime import Runtime
 from runtime_adapter import RuntimeAdapter
 from runtime_io import Admission, SerialIO
 from runtime_journal import MAX_BYTES, RuntimeJournal

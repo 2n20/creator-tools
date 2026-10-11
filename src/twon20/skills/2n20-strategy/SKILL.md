@@ -7,7 +7,7 @@ Work in the creator's authorized project and machine. Preserve their strategy lo
 
 For missing details, ask one short question at a time. Use your question controls when available, with two or three relevant choices for decisions such as existing project or starter, and this computer or VPS. Allow a custom answer using the built-in option when provided. Ask for paths and SSH destinations as text. If question controls are unavailable, ask the same concise questions in chat. Wait for my answer. A default selection is not consent.
 
-For a new project, use the official `2n20 init '<new project directory>' --template hyperliquid-python --json` command after the creator chooses the project location. Init requires an absent destination. Read the generated starter README for exact supported commands and dependency installation instructions. Do not invent runtime flags or install an unpublished release.
+For a new project, use the official `2n20 init '<new project directory>' --template hyperliquid-python --json` command after the creator chooses the project location. Init requires an absent destination. Let init create it before installing project-local agent skills; read this guide directly until then. Read the generated starter README for exact supported commands and dependency installation instructions. Do not invent runtime flags or install an unpublished release.
 
 For missing operating code, inspect and reuse or adapt the bundled starter's candle feed and limit chaser through their documented interfaces. Preserve an existing feed or executor. Read the reviewed starter source from the installed package or official public repository; do not initialize a second project just to adapt this one.
 
@@ -21,6 +21,8 @@ Adapt incrementally around these modules, retaining existing equivalents where a
 - `reporting.py`: public decisions and outcomes, with no secrets or misleading execution claims.
 
 Compare adapted signals and sizing with the original backtest or bot on the same representative inputs. Explain intentional differences such as fill assumptions, fees, latency and data timing. Paper results do not establish live execution or profitability. Keep changes scoped and reviewable. Follow the starter README for actual paper, read-only check and runtime commands.
+
+For the starter, keep the selected market, interval, size precision and limits in one public configuration. Pass that same file to its connection check and paper/live runtime. Preserve an existing project's equivalent source of configuration. A replacement feed must satisfy the Bar/BarBatch contract, including the configured market, interval and continuity rules; other sampling methods need an explicit adaptation of that contract.
 
 Keep a non-secret `STRATEGY.md` with the machine and project path, strategy rules, agreed limits, exact check commands, results and remaining work. Preserve existing content and distinguish paper checks from live execution.
 

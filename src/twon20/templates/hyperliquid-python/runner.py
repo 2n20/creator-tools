@@ -6,6 +6,8 @@ from pathlib import Path
 import shlex
 import sys
 
+from configuration import DEFAULT_CONFIG, load_config
+from models import validate_market
 from risk import Bounds, Stop, entry_plan, number
 from strategy import paper
 
@@ -20,7 +22,7 @@ def parser():
     continuous = sub.add_parser("run", help="Continuous educational strategy and bounded execution")
     continuous.add_argument("--mode", choices=("paper", "live"), default="paper")
     continuous.add_argument("--feed", choices=("fixture", "public"), default="fixture")
-    continuous.add_argument("--config", default="config.public.example.json")
+    continuous.add_argument("--config", default=DEFAULT_CONFIG)
     continuous.add_argument("--state-directory", help="Defaults to .runtime-<mode>-<feed>; retain it across restarts")
     continuous.add_argument("--max-bars", type=int)
     continuous.add_argument("--max-seconds", type=int)
@@ -35,7 +37,10 @@ def parser():
         mode.add_argument("--vault", required=True)
         mode.add_argument("--directory", required=True)
         mode.add_argument("--state-directory", default=".runner-state")
-        mode.add_argument("--market", required=name == "live-smoke", default=None if name == "live-smoke" else "BTC")
+        if name == "check":
+            mode.add_argument("--config", default=DEFAULT_CONFIG, help="The same public configuration used by run")
+        else:
+            mode.add_argument("--market", required=name == "live-smoke", default=None if name == "live-smoke" else "BTC")
         if name == "live-smoke":
             mode.add_argument("--side", required=True, choices=("buy", "sell"))
             mode.add_argument("--max-notional", required=True)
@@ -66,6 +71,7 @@ def run(args):
         return {"schema": "2n20-runner-result-v1", "stage": "paper_complete",
                 "source": "public API" if getattr(args, "public_data", False) else "deterministic fixture",
                 **paper(closes, getattr(args, "budget", "12"))}, 0
+    config = load_config(args.config) if args.command == "check" else None
     from adapter import Access, Adapter, SDK_VERSION
     from execution import collateral, collateral_plan, review_collateral, smoke
     from journal import Journal, account_lock
@@ -73,15 +79,16 @@ def run(args):
     try:
         adapter = Adapter(access)
         if args.command == "check":
-            snapshot = adapter.snapshot(args.market)
+            snapshot = adapter.snapshot(config["market"])
+            validate_market(config, snapshot)
             return {"schema": "2n20-runner-result-v1", "stage": "checked", "scope": access.scope,
                     "sdkVersion": SDK_VERSION, "keyPath": str(access.directory / "strategy.key"),
                     "signerLoaded": False, "ordersSubmitted": 0, "transfersSubmitted": 0,
                     "tradingAccessVerified": True, "strategyConnectionTested": "public SDK reads only",
-                    "market": args.market, "sizeDecimals": snapshot["decimals"],
+                    "market": config["market"], "interval": config["interval"], "sizeDecimals": snapshot["decimals"],
                     "spotUsdcAvailable": str(snapshot["spot_available"]), "perpUsdcAvailable": str(snapshot["perp_available"]),
                     "accountHasConflicts": bool(snapshot["positions"] or snapshot["orders"]),
-                    "nextAction": "Paper remains the default. Review explicit limits in a live-smoke preview before separately authorizing orders."}, 0
+                    "nextAction": "Run paper checks with this same configuration. After they pass, report setup completion with 2n20 complete-setup using the retained setup directory. Live trading requires separate authorization."}, 0
         if args.command == "recovery":
             state_directory = Path(args.state_directory).expanduser().absolute()
             if not state_directory.exists():
