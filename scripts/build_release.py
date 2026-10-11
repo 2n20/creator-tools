@@ -27,8 +27,8 @@ def validate_names(names):
         path = PurePosixPath(name)
         basename = path.name
         runtime_directories = {".local", ".venv", ".runner-state", ".git", ".agents", ".cursor", ".claude", "node_modules"}
-        runtime_files = {"setup.public.json", "onboarding.public.json", "key-reservation.public.json", "smoke.public.json", "collateral.public.json", "strategy.public.json"}
-        if path.is_absolute() or ".." in path.parts or runtime_directories.intersection(path.parts) or basename in runtime_files or basename in {"config.json", "notes.txt", ".env", ".pypirc"} or basename.startswith(".env.") or basename.endswith((".key", ".pem", ".log")):
+        runtime_files = {"setup.public.json", "onboarding.public.json", "key-reservation.public.json", "smoke.public.json", "collateral.public.json", "strategy.public.json", "runtime.public.json"}
+        if path.is_absolute() or ".." in path.parts or runtime_directories.intersection(path.parts) or any(part.startswith(".runtime-") for part in path.parts) or basename in runtime_files or basename in {"config.json", "notes.txt", ".env", ".pypirc"} or basename.startswith(".env.") or basename.endswith((".key", ".pem", ".log")):
             raise ValueError("Distribution contains a forbidden path; publication is blocked.")
 
 

@@ -7,6 +7,8 @@ Work in the creator's authorized project and machine. Preserve their strategy lo
 
 For a new project, use the official `2n20 init '<new project directory>' --template hyperliquid-python --json` command after the creator chooses the project location. Init requires an absent destination. Read the generated starter README for exact supported commands and dependency installation instructions. Do not invent runtime flags or install an unpublished release.
 
+For missing operating code, inspect and reuse or adapt the bundled starter's candle feed and limit chaser through their documented interfaces. Preserve an existing feed or executor. Read the reviewed starter source from the installed package or official public repository; do not initialize a second project just to adapt this one.
+
 Adapt incrementally around these modules, retaining existing equivalents where appropriate:
 
 - `models.py`: explicit market observations, strategy decisions and bounded order intentions.
@@ -17,6 +19,8 @@ Adapt incrementally around these modules, retaining existing equivalents where a
 - `reporting.py`: public decisions and outcomes, with no secrets or misleading execution claims.
 
 Compare adapted signals and sizing with the original backtest or bot on the same representative inputs. Explain intentional differences such as fill assumptions, fees, latency and data timing. Paper results do not establish live execution or profitability. Keep changes scoped and reviewable. Follow the starter README for actual paper, read-only check and runtime commands.
+
+Keep a non-secret `STRATEGY.md` with the machine and project path, strategy rules, agreed limits, exact check commands, results and remaining work. Preserve existing content and distinguish paper checks from live execution.
 
 Before a vault exists, develop and validate the strategy locally in paper mode. Do not run `2n20 onboard`, generate a trading key or require funding just to build a strategy. When the creator later reaches vault Step 2, choose the existing-project path and retain this project. Use the bundled `2n20-setup` guidance for resumable onboarding, creator-wallet approval, verified account binding and completion reporting. If that guidance is unavailable, export it with `2n20 skill export --name 2n20-setup --directory '<new skill directory>'` and read it before setup.
 

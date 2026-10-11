@@ -81,7 +81,7 @@ def _existing(parent, name, contents):
         return False
     try:
         if not _matches(fd, contents):
-            raise SetupError("SKILL_CONFLICT", "An existing skill differs from the bundled version. Preserve it and choose a different project; nothing was overwritten.")
+            raise SetupError("SKILL_CONFLICT", "An existing skill differs from the bundled version. Review and preserve local edits before replacing that skill, or export to a new directory for comparison. Nothing was overwritten.")
     finally:
         os.close(fd)
     return True

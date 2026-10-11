@@ -1,6 +1,6 @@
 # Release procedure
 
-The maintained source is 2n20/creator-tools. Distribution `2n20`, import `twon20` and executable `2n20` retain their identity. Old published artifacts and tags are immutable. The portable skill and canonical Hyperliquid template ship inside both wheel and sdist. Execution dependencies belong to the template's separate requirements-runner.txt.
+The maintained source is 2n20/creator-tools. Distribution `2n20`, import `twon20` and executable `2n20` retain their identity. Old published artifacts and tags are immutable. The portable skills and canonical Hyperliquid template ship inside both wheel and sdist. Execution dependencies belong to the template's separate requirements-runner.txt.
 
 ## Verification
 
@@ -19,7 +19,7 @@ SOURCE_DATE_EPOCH=1790985600 .venv/bin/python scripts/build_release.py
 .venv/bin/python scripts/check_release.py
 ```
 
-Build twice with the same SOURCE_DATE_EPOCH and compare hashes. Install the sdist separately outside the checkout. Verify consent interoperability, existing setup-directory resume, failure recovery, explicit skill export, template completeness, generation overwrite refusal, deterministic paper and read-only diagnostics. Execution tests use mocks/disposable fixtures only. Inspect archive and staged Git paths for secrets, generated state/logs and unrelated material. Do not contact a real wallet or send orders/transfers as a test.
+Build twice with the same SOURCE_DATE_EPOCH and compare hashes. Install the sdist separately outside the checkout. Verify consent interoperability, existing setup-directory resume, failure recovery, explicit skill export and installation, conflict preservation, template completeness, generation overwrite refusal, deterministic paper runtime and read-only diagnostics. Check candle recovery, ambiguous child orders, partial fills, restarts, target replacement, deadline/stop cleanup and foreign-account activity with bounded fixtures. Execution tests use mocks/disposable fixtures only. Inspect archive and staged Git paths for secrets, generated state/logs and unrelated material. Do not contact a real wallet or send orders/transfers as a test.
 
 ## Trusted Publishing
 

@@ -11,7 +11,7 @@ For a requested starter without a chosen location, ask **Where should I create t
 
 For missing details, ask one short question at a time. Use the harness's native question controls when available in the current mode. Offer two or three relevant choices for decisions, such as **Existing project / Official Python starter** or **This computer / VPS**. Retain an Other/free-text route, using the harness's built-in option when it provides one. Recommend an option only when the creator's context supports it. Ask for existing project paths and SSH destinations as short text inputs; never invent them. If question controls are unavailable, ask the same concise questions in chat without changing modes or requiring an integration. Reuse earlier answers and wait for an answer before dependent work. A preselected option or silence is not consent. These questions do not replace creator-wallet approval or authorize live trading.
 
-Use the installed official `2n20` CLI, version 0.3.0 or later for starter generation. Its public source is https://github.com/2n20/creator-tools. Treat the starter's demonstration strategy as code to inspect and adapt, not a promise of profitability or an assessment of the creator's strategy. Export or install this skill into a harness only on explicit instruction; preserve unrelated agent configuration.
+Use the installed official `2n20` CLI, version 0.4.0 or later for the modular starter. Its public source is https://github.com/2n20/creator-tools. Treat the starter's demonstration strategy as code to inspect and adapt, not a promise of profitability or an assessment of the creator's strategy. Export or install this skill into a harness only on explicit instruction; preserve unrelated agent configuration.
 
 Check `python3 --version`, `2n20 --version` and `python3 -m pip show 2n20`. Python 3.10 or later on Linux, macOS or WSL is supported. If installation or upgrading is needed, use the currently published commands at https://2n20.org/docs/quickstart and verify that exact release is available on https://pypi.org/project/2n20/ first. Do not invent an unpublished version or use an unrelated installer.
 
@@ -26,11 +26,11 @@ For a new starter, run:
 Init refuses an existing directory, including an empty one. It writes the reviewed bundled source and a public template-version manifest without installing dependencies, creating a key, starting a service or placing a trade. Follow its returned environment and reviewed installation commands only for an available published release. From the generated project, run the default paper example first:
 
 ```sh
-.venv/bin/python runner.py
-.venv/bin/python runner.py paper --public-data --market BTC
+.venv/bin/python runner.py run --feed fixture --max-bars 30
+.venv/bin/python runner.py run --feed public --max-seconds 90
 ```
 
-Read the generated README before adapting the demonstration. Preserve generated source edits; rerunning init is not an upgrade mechanism.
+Both commands default to paper mode and require no vault or trading key. The fixture checks the local loop; the public feed checks Hyperliquid connectivity. The older finite example remains available as `runner.py paper`. Read the generated README before adapting the demonstration. Preserve generated source edits; rerunning init is not an upgrade mechanism.
 
 For an existing project, inspect its safe source and public configuration to identify the strategy's account and secret-loader interfaces. Do not replace the project with a starter or claim arbitrary bot support. Keep changes scoped and reviewable. Both entry paths continue through the same CLI onboarding below.
 
@@ -90,7 +90,7 @@ Pass these flags only for checks that actually succeeded for this project and ac
 
 Finish with a clear result after acknowledgement. State that connection and paper checks passed, setup is complete, and the creator can continue developing the strategy or deliberately enable live trading in their software. State any remaining limitations specific to the project. Keep live trading disabled during setup.
 
-The starter's live-smoke and collateral commands default to public previews. Do not execute them, enable orders, restart live trading, move collateral, recreate the vault or repeat funding without separate concrete authorization that names the action and its bounds. Before an authorized live attempt, show the exact market, side, notional, slippage, duration and any proposed collateral movement. Keep retries within that authorization and preserve the runner's recovery journal. Browser automation and automatic wallet approval are outside this skill. Future venues remain outside the current Hyperliquid workflow.
+The starter's continuous `run --mode live`, live-smoke and collateral commands default to public previews. The continuous runner needs its own explicit session duration and execution confirmation. Do not execute them, enable orders, restart live trading, move collateral, recreate the vault or repeat funding without separate concrete authorization that names the action and its bounds. Before an authorized live attempt, show the exact market, side, notional, slippage, duration and any proposed collateral movement. Keep retries within that authorization and preserve the runner's recovery journal. Browser automation and automatic wallet approval are outside this skill. Future venues remain outside the current Hyperliquid workflow.
 
 For collateral recovery, show the retained public request and its exact nonce. Obtain the human's explicit decision to accept the remaining risk before running `recovery --acknowledge UNVERIFIED_COLLATERAL --request-nonce '<shown nonce>'`. Acknowledgement releases only the local reservation; keep `transferIdentityVerified=false`. Never treat it as transfer verification, resend an action or delete recovery state to bypass unresolved evidence.
 

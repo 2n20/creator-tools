@@ -4,7 +4,7 @@ Connect your strategy software to a [2n20](https://2n20.org) vault on Hyperliqui
 
 Give your coding agent the `2n20-setup` skill, or run the `2n20` CLI yourself. Run setup on the computer or server that will operate your strategy. You receive an approval link to review with your creator wallet. Your private trading key stays on the strategy machine.
 
-After approval, resume the same setup directory to verify trading access and get your strategy settings. You define and operate the strategy. The starter's moving-average example teaches the integration; it makes no profitability claim. The Python import is `twon20`.
+After approval, resume the same setup directory to verify trading access and get your strategy settings. You define and operate the strategy. The starter includes Hyperliquid candles, an educational band-breakout strategy, a replaceable limit chaser and execution reporting. It makes no profitability claim. The Python import is `twon20`.
 
 ## Install
 
@@ -13,7 +13,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.3.6'
+python -m pip --isolated install '2n20==0.4.0'
 2n20 --version
 ```
 
@@ -45,15 +45,28 @@ The CLI automatically retries temporary RPC and approval-link failures within a 
 
 ## Use your coding agent
 
-Export the bundled skill:
+From your strategy project, install both guides for your coding agent:
 
 ```sh
-2n20 skill export --directory '<new skill directory>'
+2n20 skill install --agent codex
 ```
 
-Give your agent the exported `SKILL.md`, your vault URL and your strategy project location. If you need a project, ask it to generate the official starter. It can create a new folder for you, or use a location you choose. Tell it where the strategy will run and which terminal/filesystem access you authorize. Your agent uses the CLI through that access; you open the approval link and use your wallet.
+Use `cursor`, `claude` or `hermes` instead of `codex` for those agents. Codex installs into the project's `.agents/skills`, Cursor into `.cursor/skills`, and Claude Code into `.claude/skills`. Hermes uses `~/.hermes/skills` or the configured `HERMES_HOME`. Reload the agent's skills after installation. Identical copies stay unchanged; conflicting local copies are preserved for your review.
 
-The skill asks your agent to use short multiple-choice questions for missing setup decisions, with free-text answers for paths or other choices. If the harness has no question controls, it asks in chat. It reuses details you already supplied.
+Use `2n20-strategy` to adapt an existing backtest or bot, or develop the starter before a vault exists. The guide keeps your signals, sizing and research tools, and helps add only the operating modules you need. For example:
+
+> Use 2n20-strategy to adapt this project's backtested strategy for Hyperliquid and a future 2n20 vault. Keep its signals and sizing. Use the starter feed and limit chaser where operating code is missing. Verify paper behavior first.
+
+Use `2n20-setup` when you have a vault. Give your agent the vault URL, project location and machine. It uses the CLI through authorized terminal access; you open the approval link and use your wallet. A project prepared before vault creation is the same existing project in Step 2.
+
+For another client, export a portable guide:
+
+```sh
+2n20 skill export --name 2n20-strategy --directory ./strategy-guide
+2n20 skill export --name 2n20-setup --directory ./setup-guide
+```
+
+Give the exported `SKILL.md` to the client. Execution requires its own authorized terminal and filesystem tools. No MCP server is required for the local coding-agent flow. See [Agent skills](https://2n20.org/docs/agents) for installation options.
 
 After your project's read-only connection and paper checks pass, your agent reports those results with the retained key. The website completes Step 3 automatically. To report the checks yourself:
 
@@ -63,11 +76,9 @@ After your project's read-only connection and paper checks pass, your agent repo
 
 Use the flags only after both checks succeed. This sends a signed public setup report, never your private key or project files. It submits no blockchain transaction and does not enable live trading. Reporting can be retried from the same directory without replacing the key.
 
-For Codex and [Cursor](https://cursor.com/docs/skills), create the project's `.agents/skills` parent directory, then export to an unused `.agents/skills/2n20-setup` directory. For [Claude Code](https://code.claude.com/docs/en/skills), use an unused project `.claude/skills/2n20-setup` directory. You can use your agent application's user skill directory for a user-wide installation. Review the exported guide before invoking `2n20-setup`. Pip installation leaves agent configuration directories untouched; export refuses an existing directory.
-
 ## Keep setup and execution separate
 
-Use `setup`, `onboard`, `renew`, `config`, `status`, `check-consent`, `init` and `skill export` without submitting trades or collateral transfers. Keep `strategy.key` private on the strategy machine. Public configuration names its path without embedding the key. Agents must never inspect, print, upload or commit private-key contents. The CLI sets ignore rules and restrictive file permissions before creating a key.
+Use `setup`, `onboard`, `renew`, `config`, `status`, `check-consent`, `init`, `skill export` and `skill install` without submitting trades or collateral transfers. Keep `strategy.key` private on the strategy machine. Public configuration names its path without embedding the key. Agents must never inspect, print, upload or commit private-key contents. The CLI sets ignore rules and restrictive file permissions before creating a key.
 
 Use paper mode without a signing key. Read its results as simulated fills and P&L. For live execution, the starter uses the official Hyperliquid SDK with the approved trading key as signer and the verified trading account as `account_address`. It does not use the SDK's legacy `vault_address`.
 
@@ -82,4 +93,4 @@ Before a live test, choose the market, side, maximum notional, slippage and time
 - [Dependency attribution](https://github.com/2n20/creator-tools/blob/main/THIRD_PARTY.md)
 - [MIT license](https://github.com/2n20/creator-tools/blob/main/LICENSE)
 
-We maintain the CLI, skill and starter in this public repository. We keep the application and financial contracts in a separate private repository.
+We maintain the CLI, skills and starter in this public repository. We keep the application and financial contracts in a separate private repository.
