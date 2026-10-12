@@ -119,6 +119,66 @@ class StrategyRuntimeTests(unittest.TestCase):
         return Runtime(config(), journal or MemoryJournal(), worker=ImmediateIO(), reporter=Mock(),
                        strategy=strategy, feed=feed, clock=lambda: 1000)
 
+    def test_recovery_batch_finishes_before_retained_target_can_submit(self):
+        feed = Mock(healthy=True, done=False)
+        feed.poll.side_effect = [BarBatch(tuple(bar(i) for i in range(24)), False), None]
+        adapter = FakeAdapter()
+        runtime = Runtime(config(), MemoryJournal(), mode="live", worker=ImmediateIO(), adapter=adapter,
+                          reporter=Mock(), feed=feed, clock=lambda: 1000)
+        runtime.nominate(Target(Decimal(1), "retained"), bar(0), 1000)
+        runtime.commit()
+        runtime.tick()
+        runtime.tick()
+        self.assertEqual(runtime.bars_processed, 16)
+        self.assertIsNotNone(runtime.pending_batch)
+        self.assertEqual(adapter.calls, [])
+        self.assertFalse(runtime.admission.feed_ready.is_set())
+        runtime.tick()
+        self.assertEqual(runtime.bars_processed, 24)
+        self.assertIsNone(runtime.pending_batch)
+        self.assertTrue(runtime.admission.feed_ready.is_set())
+
+    def test_partial_exposure_remains_visible_until_terminal_reconciliation(self):
+        now = [1000]
+        adapter = FakeAdapter()
+        feed = Mock(healthy=True, done=False)
+        feed.poll.return_value = None
+        journal = MemoryJournal()
+        def create():
+            return Runtime(config(), journal, mode="live", worker=ImmediateIO(), adapter=adapter,
+                           reporter=Mock(), feed=feed, clock=lambda: now[0])
+        runtime = create()
+        runtime.nominate(Target(Decimal(1), "test"), bar(0), now[0])
+        runtime.commit()
+        def ticks(count):
+            for _ in range(count):
+                runtime.tick()
+                now[0] += 500
+        ticks(5)
+        adapter.fill_size = Decimal("0.1")
+        adapter.delay_fill = True
+        runtime.stop()
+        ticks(10)
+        for _ in range(2):
+            result = runtime.result()
+            self.assertTrue(result["unresolvedChild"])
+            self.assertIsNone(result["position"])
+            self.assertEqual(Decimal(result["knownPosition"]), Decimal("0.1"))
+            runtime.report("review", runtime.state["execution"]["active"])
+            runtime.commit()
+            report = runtime.state["reports"][-1]
+            self.assertEqual(Decimal(report["filledSize"]), Decimal("0.1"))
+            self.assertEqual(Decimal(report["vwap"]), Decimal(100))
+            self.assertIsNone(report["position"])
+            runtime = create()
+            runtime.stop()
+        adapter.delay_fill = False
+        ticks(5)
+        self.assertFalse(runtime.result()["unresolvedChild"])
+        self.assertEqual(Decimal(runtime.result()["position"]), Decimal("0.1"))
+        runtime.report("review", runtime.state["execution"]["active"])
+        self.assertEqual(Decimal(runtime.state["reports"][-1]["filledSize"]), Decimal("0.1"))
+
     def test_band_component_breakouts_and_mean_crossing(self):
         strategy = BandBreakout(5, "1")
         bars, state, signals = [], {}, []

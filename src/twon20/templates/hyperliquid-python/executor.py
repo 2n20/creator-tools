@@ -196,10 +196,10 @@ class LimitChaser:
             self.state["takerFills"] += evidence["taker"]
             if child["oid"] not in self.state["ownedOids"]:
                 self.state["ownedOids"].append(child["oid"])
+            self.state["child"], self.state["phase"], self.state["error"] = None, "ready", None
             self.report("child_complete", self.state["active"], {"childId": child["cloid"], "oid": child["oid"],
                         "filledSize": str(filled), "vwap": str(number(evidence["value"]) / filled) if filled else None,
                         "feesUsdc": evidence["fees"], "makerFills": evidence["maker"], "takerFills": evidence["taker"]})
-            self.state["child"], self.state["phase"], self.state["error"] = None, "ready", None
         else:
             child["phase"] = "child_open"
             self.state["phase"], self.state["error"] = "child_open", None

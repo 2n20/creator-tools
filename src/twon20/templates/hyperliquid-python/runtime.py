@@ -24,6 +24,26 @@ def fingerprint(config):
     return hashlib.sha256(json.dumps(config, sort_keys=True).encode() + source).hexdigest()
 
 
+def execution_progress(execution):
+    child = execution["child"]
+    position = number(execution["position"], signed=True)
+    filled, value = number(execution["filledSize"]), number(execution["filledValue"])
+    fees = number(execution["fees"], signed=True)
+    maker, taker = execution["makerFills"], execution["takerFills"]
+    if child:
+        partial = number(child["filled"])
+        position = number(child["basePosition"], signed=True) + partial * (1 if child["plan"]["buy"] else -1)
+        filled += partial
+        value += number(child.get("value", "0"))
+        fees += number(child.get("fees", "0"), signed=True)
+        maker += child.get("maker", 0)
+        taker += child.get("taker", 0)
+    return {"position": None if child else str(position), "knownPosition": str(position),
+            "unresolvedChild": child is not None, "filledSize": str(filled),
+            "vwap": str(value / filled) if filled else None, "feesUsdc": str(fees),
+            "makerFills": maker, "takerFills": taker}
+
+
 class Runtime:
     """Tick budget: no network waits, <=8 bars, one executor transition.
 
@@ -92,13 +112,12 @@ class Runtime:
     def report(self, status, intent=None, extra=None):
         self.state["reportSequence"] += 1
         execution = self.state["execution"]
-        filled = number(execution["filledSize"])
+        progress = execution_progress(execution)
         report = {"eventId": self.policy[:12] + ":" + str(self.state["reportSequence"]), "sequence": self.state["reportSequence"],
                   "status": status, "mode": self.mode, "intentId": intent["id"] if intent else None,
-                  "position": execution["position"], "target": intent["quantity"] if intent else None,
-                  "residual": str(number(intent["quantity"], signed=True) - number(execution["position"], signed=True)) if intent else None,
-                  "filledSize": str(filled), "vwap": str(number(execution["filledValue"]) / filled) if filled else None,
-                  "feesUsdc": execution["fees"], "makerFills": execution["makerFills"], "takerFills": execution["takerFills"],
+                  "target": intent["quantity"] if intent else None,
+                  "residual": str(number(intent["quantity"], signed=True) - number(progress["position"], signed=True)) if intent and progress["position"] is not None else None,
+                  **progress,
                   **(extra or {})}
         self.state["reports"].append(report)
         # The checkpoint is a documented rolling local report window. Active
@@ -143,9 +162,7 @@ class Runtime:
             self.admission.stopping.set()
             batch = None
         ready = self.feed.healthy and not self.admission.stopping.is_set()
-        if ready:
-            self.admission.feed_ready.set()
-        else:
+        if not ready or batch:
             self.admission.feed_ready.clear()
         if batch and not self.admission.stopping.is_set():
             if len(batch.bars) > 512:
@@ -179,6 +196,8 @@ class Runtime:
             # At most eight strategy updates and one local checkpoint per
             # tick. Cursor and resulting target commit before any effect.
             self.commit()
+        if ready and self.pending_batch is None:
+            self.admission.feed_ready.set()
         self.executor.step(now_ms)
 
     def stop(self):
@@ -190,8 +209,8 @@ class Runtime:
         execution = self.state["execution"]
         return {"schema": "2n20-runner-result-v1", "stage": "runtime_stopped", "mode": self.mode,
                 "simulated": self.mode == "paper", "barsProcessed": self.bars_processed,
-                "cursor": self.state["cursor"], "phase": execution["phase"], "position": execution["position"],
-                "unresolvedChild": bool(execution["child"]), "reason": self.stop_reason,
+                "cursor": self.state["cursor"], "phase": execution["phase"], **execution_progress(execution),
+                "reason": self.stop_reason,
                 "ordersSubmitted": 0 if self.mode == "paper" else "see retained child and public evidence",
                 "signerLoaded": False if self.mode == "paper" else "only for authorized effects",
                 "stateFile": self.journal.public_path("runtime.public.json"),

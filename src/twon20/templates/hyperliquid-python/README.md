@@ -108,6 +108,8 @@ Checkpoint reads and writes share a 256 KiB ceiling. Active child evidence is ca
 
 Local JSON reports are written durably before delivery. They include stable event IDs, target and child IDs, verified size, residual, VWAP, USDC fees and maker/taker fill counts. Paper records are labeled simulated. To enable optional Telegram, set `reporting.telegram` to true in your reviewed public configuration and supply `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to the process through your own local environment. Do not paste their values into chat, configuration, logs or version control.
 
+While a child order is unresolved, `position` and `residual` are null. `knownPosition` includes the child's verified partial fills, and fill totals include those fills once. Further fills remain possible until reconciliation completes. The shutdown result uses the same position and fill fields, so an unresolved partial order cannot appear flat.
+
 Telegram uses a queue of 16 records, a three-second request timeout and at most two attempts per record. Full queues or delivery failure affect remote reporting only. Local records remain authoritative. A lost acknowledgement may cause a duplicate; event IDs help identify it. Exactly-once delivery is not promised.
 
 Protocol discovery, consent, approval and private-key recovery remain in the CLI.
