@@ -179,10 +179,24 @@ class RuntimeAdapter(Adapter):
         # mixed success/error responses remain potentially submitted.
         classification = classify_submission(response)
         if classification["classification"] == "rejected":
+            if response.get("status") == "err":
+                return classification
             statuses = response.get("response", {}).get("data", {}).get("statuses", [])
-            strict = response.get("status") == "err" or (len(statuses) == 1 and set(statuses[0]) == {"error"})
+            strict = len(statuses) == 1 and set(statuses[0]) == {"error"}
             if not strict:
                 return {"classification": "ambiguous"}
+            if statuses and isinstance(statuses[0].get("error"), str):
+                message = statuses[0]["error"]
+                for prefix, reason in (
+                    ("Order could not immediately match against any resting orders", "IOC_NO_MATCH"),
+                    ("Post only order would have immediately matched", "POST_ONLY_WOULD_CROSS"),
+                    ("Reduce only order would increase position", "REDUCE_ONLY_REJECTED"),
+                    ("Order must have minimum value of $10", "MINIMUM_NOTIONAL_REJECTED"),
+                    ("Insufficient margin to place order", "INSUFFICIENT_MARGIN"),
+                ):
+                    if message.startswith(prefix):
+                        classification["reason"] = reason
+                        break
         return classification
 
     def cancel_child(self, child, state, intent, admission):

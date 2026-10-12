@@ -24,13 +24,18 @@ def plan_child(intent, state, snapshot, limits, now_ms):
     residual = min(abs(delta), abs(position)) if reducing else abs(delta)
     urgent = limits["iocAfterSeconds"] is not None and now_ms - intent["createdMs"] >= limits["iocAfterSeconds"] * 1000
     near = snapshot["ask"] if (buy and urgent) or (not buy and not urgent) else snapshot["bid"]
-    decimals = snapshot["decimals"]
-    places = max(0, min(6 - decimals, 4 - near.adjusted()))
-    price = near.quantize(Decimal(1).scaleb(-places), rounding=ROUND_DOWN if buy else ROUND_UP)
     reference = number(intent["arrivalPrice"])
     bound = reference * (1 + Decimal(limits["slippageBps"]) / 10000 if buy else 1 - Decimal(limits["slippageBps"]) / 10000)
-    if price <= 0 or (buy and price > bound) or (not buy and price < bound):
+    if near <= 0 or (buy and near > bound) or (not buy and near < bound):
         raise Stop("PRICE_BOUND", "The market moved beyond the retained arrival-price bound. No child is authorized.")
+    # IOC needs a marketable limit throughout the permitted slippage range;
+    # pinning it to a sampled best quote makes small moves cause zero fills.
+    quote = bound if urgent else near
+    decimals = snapshot["decimals"]
+    places = max(0, min(6 - decimals, 4 - quote.adjusted()))
+    price = quote.quantize(Decimal(1).scaleb(-places), rounding=ROUND_DOWN if buy else ROUND_UP)
+    if price <= 0 or (buy and price > bound) or (not buy and price < bound):
+        raise Stop("PRICE_BOUND", "No valid tick fits the retained arrival-price bound.")
     max_notional = number(limits["childNotional"])
     caps = [max_notional]
     if limits.get("depthFraction") is not None:
@@ -135,7 +140,8 @@ class LimitChaser:
             # this child never filled. Crashes before this result do not.
             reason = value.get("reason", value.get("code", "ORDER_REJECTED"))
             self.state["child"] = None
-            self.report("child_not_submitted", self.state["active"], {"childId": child["cloid"], "reason": reason})
+            status = "child_rejected" if value["classification"] == "rejected" else "child_not_submitted"
+            self.report(status, self.state["active"], {"childId": child["cloid"], "reason": reason})
             self.snapshot = None
             self._blocked(reason)
             self.commit()

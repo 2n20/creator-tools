@@ -86,6 +86,35 @@ class SubmissionTimingTests(unittest.TestCase):
         self.access.signer.assert_not_called()
         self.sdk.order.assert_not_called()
 
+    def test_ioc_crosses_quote_movement_within_retained_bound(self):
+        limits = config()['execution']
+        limits['iocAfterSeconds'] = 5
+        current = self.adapter.observe('BTC', self.state)['snapshot']
+        self.plan = plan_child(self.target, self.state, current, limits, self.now)
+        self.child['plan'] = self.plan
+        self.delay = 0
+        def match(market, buy, size, price, order_type, **kwargs):
+            if price < 110.3:
+                return {'status': 'ok', 'response': {'data': {'statuses': [
+                    {'error': 'Order could not immediately match against any resting orders.'}]}}}
+            return {'status': 'ok', 'response': {'data': {'statuses': [{'filled': {'oid': 1}}]}}}
+        self.sdk.order.side_effect = match
+        self.assertEqual(self.submit()['classification'], 'accepted_unverified')
+        self.assertLessEqual(float(self.plan['price']), 110.55)
+
+    def test_known_exchange_rejection_has_safe_reason_without_provider_text(self):
+        self.sdk.order.return_value = None
+        self.sdk.order.side_effect = lambda *args, **kwargs: {
+            'status': 'ok', 'response': {'data': {'statuses': [
+                {'error': 'Order could not immediately match against any resting orders. asset=0'}]}}}
+        result = self.submit()
+        self.assertEqual(result, {'classification': 'rejected', 'code': 'ORDER_REJECTED', 'reason': 'IOC_NO_MATCH'})
+        self.assertNotIn('asset', str(result))
+
+    def test_payload_rejection_with_string_response_is_sanitized(self):
+        self.sdk.order.side_effect = lambda *args, **kwargs: {'status': 'err', 'response': 'provider detail'}
+        self.assertEqual(self.submit(), {'classification': 'rejected', 'code': 'EXCHANGE_REJECTED'})
+
     def test_default_exchange_still_requires_fresh_authority(self):
         self.access.verify.side_effect = Stop("ACCESS_UNVERIFIED", "Disposable revocation")
         with self.assertRaises(Stop):
