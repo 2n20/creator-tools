@@ -91,6 +91,13 @@ class Admission:
         limit = self.cleanup_deadline if cleanup else self.session_deadline
         if limit is not None and now >= limit:
             raise Stop("SESSION_EXPIRED", "The retained live session expired. Preserve owned child identity for explicit recovery.")
-        if not cleanup and (self.stopping.is_set() or not self.feed_ready.is_set() or not self.feed_check()
-                            or self.generation != intent_id or now >= deadline):
-            raise Stop("ADMISSION_CLOSED", "The target, feed, stop request or retained deadline no longer admits a new order.")
+        if cleanup:
+            return
+        if self.stopping.is_set():
+            raise Stop("RUNTIME_STOPPED", "The stop request forbids a new order.")
+        if self.generation != intent_id:
+            raise Stop("TARGET_SUPERSEDED", "A newer target replaced this order's intent.")
+        if now >= deadline:
+            raise Stop("CHASE_EXPIRED", "The retained target deadline expired before submission.")
+        if not self.feed_ready.is_set() or not self.feed_check():
+            raise Stop("FEED_NOT_READY", "Fresh, fully processed candle data is required before submission.")

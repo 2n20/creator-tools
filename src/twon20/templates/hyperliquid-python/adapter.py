@@ -289,10 +289,17 @@ class Adapter:
                 raise Stop("ACCOUNT_ACTIVITY_CONFLICT", "Another order filled after this intent began. Matching net position size is insufficient; no unrelated exposure will be reduced or called complete.")
 
     def exchange(self, expires_ms=None, before_sign=None):
-        self.access.verify()
+        """Resolve metadata, then authorize immediately before loading a signer.
+
+        An effect-specific before_sign must include fresh access verification,
+        normally through snapshot(), as well as that effect's bounds.
+        """
         _, Exchange, _ = sdk_types()
         meta, spot_meta = self.read(self.info.meta), self.read(self.info.spot_meta)
-        if before_sign is not None: before_sign()
+        if before_sign is not None:
+            before_sign()
+        else:
+            self.access.verify()
         if expires_ms is not None and int(time.time() * 1000) >= expires_ms:
             raise Stop("DEADLINE_EXPIRED", "The retained order deadline expired before private signing. No order was submitted; reconcile the original intent.")
         # SDK 0.24.0 debug logging includes signed payloads. This dedicated

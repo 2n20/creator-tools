@@ -134,8 +134,8 @@ class LimitChaser:
             # An observed pre-call failure or strict exchange rejection proves
             # this child never filled. Crashes before this result do not.
             reason = value.get("reason", value.get("code", "ORDER_REJECTED"))
-            self.report("child_not_submitted", self.state["active"], {"childId": child["cloid"], "reason": reason})
             self.state["child"] = None
+            self.report("child_not_submitted", self.state["active"], {"childId": child["cloid"], "reason": reason})
             self.snapshot = None
             self._blocked(reason)
             self.commit()

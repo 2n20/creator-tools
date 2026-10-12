@@ -500,7 +500,7 @@ class SchedulerJournalTests(unittest.TestCase):
             result = worker.take("slow")
             if result: break
             time.sleep(0.001)
-        self.assertEqual(result, (False, "ADMISSION_CLOSED"))
+        self.assertEqual(result, (False, "RUNTIME_STOPPED"))
         self.assertEqual(writes, [])
         worker.close()
 
@@ -644,10 +644,9 @@ class AdapterEvidenceTests(unittest.TestCase):
         admission.feed_ready.set()
         admission.generation = target["id"]
         self.adapter.observe = Mock(return_value={"snapshot": {**snapshot(), "decimals": 4}, "position": "0"})
-        self.adapter.exchange = Mock(side_effect=AssertionError("signer read"))
+        self.adapter.exchange = Mock(side_effect=lambda expires, before_sign: before_sign())
         result = self.adapter.submit_child(self.child, execution_state(1000), target, admission)
         self.assertEqual(result, {"classification": "not_submitted", "reason": "PRECISION_UNAVAILABLE"})
-        self.adapter.exchange.assert_not_called()
 
     def test_cancellation_only_calls_exact_verified_owned_oid(self):
         self.info.query_order_by_cloid.return_value["order"]["status"] = "open"
@@ -660,6 +659,18 @@ class AdapterEvidenceTests(unittest.TestCase):
         self.assertEqual(result["classification"], "cancel_submitted")
         exchange.cancel.assert_called_once_with("BTC", 11)
         self.assertEqual(self.adapter.exchange.call_args.args, (3000,))
+
+    def test_cancellation_rechecks_authority_before_loading_signer(self):
+        self.info.query_order_by_cloid.return_value["order"]["status"] = "open"
+        self.adapter.snapshot.return_value["orders"] = [{"oid": 11}]
+        self.adapter.access.verify = Mock(side_effect=Stop("ACCESS_UNVERIFIED", "Disposable revocation"))
+        self.adapter.access.signer = Mock(side_effect=AssertionError("No signer"))
+        admission = Admission(lambda: 2000, 1500, 3000)
+        admission.stopping.set()
+        with self.assertRaises(Stop) as failure:
+            self.adapter.cancel_child(self.child, self.state, intent(), admission)
+        self.assertEqual(failure.exception.code, "ACCESS_UNVERIFIED")
+        self.adapter.access.signer.assert_not_called()
 
 
 class SessionRecoveryTests(unittest.TestCase):

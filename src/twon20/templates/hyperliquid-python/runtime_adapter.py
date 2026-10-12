@@ -164,7 +164,7 @@ class RuntimeAdapter(Adapter):
         plan = child["plan"]
         # state is the immutable prechild account state, with the child absent.
         try:
-            self._preflight(plan, state, intent, admission)
+            admission.check(intent["id"], intent["deadlineMs"])
             exchange = self.exchange(intent["deadlineMs"], before_sign=lambda: self._preflight(plan, state, intent, admission))
             admission.check(intent["id"], intent["deadlineMs"])
         except Stop as error:
@@ -195,7 +195,10 @@ class RuntimeAdapter(Adapter):
             return {"classification": "terminal_observed"}
         def check():
             admission.check(intent["id"], intent["deadlineMs"], cleanup=True)
-        exchange = self.exchange(admission.cleanup_deadline, before_sign=check)
+        def authorize():
+            self.access.verify()
+            check()
+        exchange = self.exchange(admission.cleanup_deadline, before_sign=authorize)
         check()
         try:
             # Never use cancel-all, market-wide cancellation or an unowned ID.
