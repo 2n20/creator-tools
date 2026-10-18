@@ -6,7 +6,7 @@ The reviewed execution dependency is [hyperliquid-python-sdk 0.24.0](https://pyp
 
 Primary protocol references reviewed on 2026-10-03:
 
-- [Exchange endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint): limit IOC orders, reduce-only actions, client order IDs and same-account `agentSendAsset` collateral transfers.
+- [Exchange endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint): limit IOC orders, reduce-only actions, client order IDs, and same-account `agentSendAsset` spot-to-perp collateral transfers.
 - [Info endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint): public account, book, fee, order and fill evidence.
 - [Websocket subscriptions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions): single candle update object and candle fields. Finalization and replay are runtime policies verified against pinned SDK source.
 - [Tick and lot size](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size): supported price/size precision.

@@ -26,7 +26,7 @@ class FakeRpc:
         self.fail = None
         self.reorg = False
         self.calls = []
-        self.version = 2
+        self.version = 4
         self.registered = 1
         self.core = CORE
         self.bound_venue = self.anchor["contracts"]["LocalVenue"].lower()
@@ -35,6 +35,25 @@ class FakeRpc:
         self.lifecycle = 0
         self.pending_requests = 0
         self.phase = 0
+        self.restricted_at = 0
+        self.restricted = 0
+        self.recovered = 0
+        self.priced = 1
+        self.unpriced = 0
+        self.report_nonce = 1
+        self.uncovered = 0
+        self.release_notice = 120
+        self.release_round = 600
+        self.misses = 0
+        self.last_miss_at = 0
+        self.cuts_allowed_at = None
+        self.opened = 0
+        self.executed = 0
+        self.cancelled = 0
+        self.notice_at = 0
+        self.short_book = False
+        self.short_release = False
+        self.short_strikes = False
         self.used = False
         self.bad_digest = False
         self.bad_factory = False
@@ -65,6 +84,16 @@ class FakeRpc:
             return self.codes.get(params[0].lower(), "0x")
         raise AssertionError(method)
 
+    def served_cuts(self):
+        if self.cuts_allowed_at is not None:
+            return self.cuts_allowed_at
+        if self.misses < 2:
+            return 0
+        shift = 8 if self.misses > 9 else self.misses - 1
+        wait = self.release_round << shift
+        day = 86_400
+        return self.last_miss_at + (day if wait >= day else wait)
+
     def words(self, to, signature, arguments, block, count):
         self.calls.append((signature, arguments, block))
         if self.fail == signature:
@@ -74,22 +103,29 @@ class FakeRpc:
         scalar = {"settings()": int(controller, 16), "factory()": int(factory, 16), "defaultImplementation()": int(implementation, 16),
                   "asset()": int(asset, 16), "operator()": int(self.anchor["venue"]["operator"], 16), "owner()": int(OWNER, 16),
                   "tradingKeyVersion()": self.version, "isVault(address)": self.registered, "coreAccountOf(address)": int(self.core, 16),
-                  "usedTradingKeys(address)": int(self.used), "lifecycle()": self.lifecycle, "pendingRequestCount()": self.pending_requests}
+                  "usedTradingKeys(address)": int(self.used), "lifecycle()": self.lifecycle, "pendingRequestCount()": self.pending_requests,
+                  "RELEASE_NOTICE()": self.release_notice, "RELEASE_ROUND()": self.release_round, "uncoveredAssets()": self.uncovered}
         if signature == "venue()":
             return [int(ZERO if self.bad_factory and to == factory else self.bound_venue, 16)]
         if signature == "vault()":
             return [int(OWNER if self.bad_core else VAULT, 16)]
-        if signature == "book(address)":
-            return [int(self.core, 16), self.phase, 7, 0]
-        if signature == "observationState(address)":
-            return [7, 9, self.now - 1, 0]
-        if signature == "tradingKeys(address)":
-            return [self.key[0], self.key[1], self.key[2] + int(self.change_nonce and block["blockHash"] != self.hash)]
-        if signature == "tradingKeyStatus(address)":
-            return self.key_status
+        if signature == "books(address)":
+            words = [int(self.core, 16), self.phase, 7, self.report_nonce, self.now - 1, self.restricted_at, self.restricted, self.recovered, self.priced, self.unpriced, 0, 0, 0, 0, 0, 0]
+            return words[:-1] if self.short_book else words
+        if signature == "keys(address)":
+            nonce = self.key[2] + int(self.change_nonce and block["blockHash"] != self.hash)
+            return [self.key[0], self.key[1], nonce, *self.key_status]
+        if signature == "releases(address)":
+            words = [0, 0, 0, 0, self.opened, self.executed, 0, 0, self.cancelled, self.notice_at]
+            return words[:-1] if self.short_release else words
+        if signature == "strikes(address)":
+            words = [self.misses, self.last_miss_at]
+            return words[:1] if self.short_strikes else words
+        if signature == "cutsAllowedAt(address)":
+            return [self.served_cuts()]
         if signature == "consentDigest(address,address,uint64,uint64)":
             vault, key, nonce, deadline = arguments
-            domain = keccak(encode(["bytes32", "bytes32", "bytes32", "uint256", "address"], [keccak(text="EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"), keccak(text="2n20 SDK venue"), keccak(text="1"), 999, venue]))
+            domain = keccak(encode(["bytes32", "bytes32", "bytes32", "uint256", "address"], [keccak(text="EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"), keccak(text="2n20 SDK venue"), keccak(text="2"), 999, venue]))
             struct = keccak(encode(["bytes32", "address", "address", "uint64", "uint64"], [keccak(text="TradingKeyConsent(address vault,address key,uint64 nonce,uint64 deadline)"), vault, key, nonce, deadline]))
             return [0 if self.bad_digest else int.from_bytes(keccak(b"\x19\x01" + domain + struct), "big")]
         if signature in scalar:

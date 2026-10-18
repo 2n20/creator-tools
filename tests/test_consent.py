@@ -1,11 +1,13 @@
+from dataclasses import replace
 import json
+from pathlib import Path
 import unittest
 
 from eth_account import Account
 from eth_account.messages import encode_typed_data
 
-from twon20.consent import FIELDS, prepare, typed_data, validate
-from twon20.discovery import discover
+from twon20.consent import FIELDS, digest, prepare, typed_data, validate
+from twon20.discovery import address, discover
 from twon20.errors import SetupError
 
 from support import LINK, FakeRpc
@@ -27,6 +29,18 @@ class ConsentTests(unittest.TestCase):
         checked = validate(json.dumps(self.consent), self.found, self.rpc, self.rpc.now)
         self.assertEqual(checked, self.consent)
         self.assertNotIn(self.wallet.key.hex(), json.dumps(checked))
+
+    def test_public_vector_recovers_under_domain_version_two(self):
+        root = Path(__file__).parent / "fixtures"
+        consent = json.loads((root / "consent.public.json").read_text())
+        interop = json.loads((root / "interoperability.public.json").read_text())
+        found = replace(self.found, vault=address(consent["vault"]), approval_contract=address(consent["venue"]), anchor=self.found.anchor | {"chainId": consent["chainId"]})
+        message = typed_data(found, address(consent["key"]), int(consent["nonce"]), int(consent["deadline"]))
+        self.assertEqual(message["domain"]["version"], "2")
+        recovered = Account.recover_message(encode_typed_data(full_message=message), signature=consent["signature"])
+        self.assertEqual(address(recovered), address(consent["key"]))
+        self.assertEqual("0x" + digest(found, address(consent["key"]), int(consent["nonce"]), int(consent["deadline"])).hex(), interop["digest"])
+        self.assertFalse(interop["privateMaterialRetained"])
 
     def test_stale_nonce_expiry_wrong_network_and_binding(self):
         for field, value, code in [("nonce", "2", "STALE_NONCE"), ("deadline", str(self.rpc.now), "EXPIRED_CONSENT"), ("deadline", str(self.rpc.now + 86401), "EXPIRED_CONSENT"), ("chainId", 998, "INVALID_CONSENT"), ("vault", "0x" + "e" * 40, "CONSENT_BINDING_MISMATCH"), ("venue", "0x" + "e" * 40, "CONSENT_BINDING_MISMATCH"), ("signature", "0x" + "00" * 65, "INVALID_SIGNATURE")]:
@@ -67,7 +81,7 @@ class ConsentTests(unittest.TestCase):
         original = self.rpc.words
         def changed(target, signature, arguments, block, count):
             value = original(target, signature, arguments, block, count)
-            return [value[0], value[1], 1] if signature == "tradingKeys(address)" else value
+            return [value[0], value[1], 1] if signature == "keys(address)" else value
         self.rpc.words = changed
         with self.assertRaises(SetupError) as caught:
             prepare(self.found, self.wallet, self.rpc, self.rpc.now)

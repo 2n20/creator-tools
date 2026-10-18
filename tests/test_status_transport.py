@@ -8,7 +8,7 @@ from twon20.discovery import discover
 from twon20.errors import SetupError
 from twon20.onboarding import HANDOFF_ERRORS, HANDOFF_TIMEOUT_SECONDS
 from twon20.rpc import Rpc, request_json
-from twon20.status import status
+from twon20.status import poll_lifecycle, status
 
 from support import CORE, KEY, LINK, OWNER, FakeRpc
 
@@ -34,7 +34,7 @@ class StatusTests(unittest.TestCase):
     def setUp(self):
         self.rpc = FakeRpc()
         self.rpc.key = [int(KEY, 16), 0, 1]
-        self.rpc.key_status = [int(KEY, 16), self.rpc.now + 3600, int(OWNER, 16), 0]
+        self.rpc.key_status = [int(KEY, 16), self.rpc.now + 20 * 86400, int(OWNER, 16), 0]
         self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
 
     def info(self, payload):
@@ -42,6 +42,10 @@ class StatusTests(unittest.TestCase):
                 "extraAgents": [{"address": KEY, "name": "2n20", "validUntil": (self.rpc.now + 3600) * 1000}],
                 "userAbstraction": "disabled", "spotClearinghouseState": {"balances": [{"token": 0, "coin": "USDC", "total": "3", "hold": "0"}]},
                 "clearinghouseState": {"time": self.rpc.now * 1000, "marginSummary": {"accountValue": "0"}}}[payload["type"]]
+
+    def release(self, active=False, opened=False):
+        return {"active": active, "noticeAt": self.rpc.notice_at, "roundSeconds": 600, "openedThisRound": opened,
+                "misses": self.rpc.misses, "lastMissAt": self.rpc.last_miss_at, "cutsAllowedAt": self.rpc.served_cuts()}
 
     def check(self, info=None):
         return status(self.found, self.rpc, self.rpc.now, info or self.info)
@@ -51,6 +55,16 @@ class StatusTests(unittest.TestCase):
         self.assertTrue(value["tradingAccessReady"])
         self.assertFalse(value["strategyConnectionTested"])
         self.assertEqual(value["availableUsdc"], "3")
+        self.assertEqual(value["release"], self.release())
+        self.assertEqual(value["pricing"], {"priced": True, "unpriced": 0, "reasons": [], "action": "priced"})
+        self.assertFalse(value["restricted"])
+        self.assertNotIn("suspended", value)
+        self.assertNotIn("missLimit", value["release"])
+        self.assertNotIn("missedRounds", value["release"])
+        self.assertEqual(value["keyValidUntil"], self.rpc.now + 20 * 86400)
+        self.assertFalse(value["keyExpiryWarning"])
+        self.assertEqual(value["creatorAction"], "No action needed.")
+        self.assertEqual(value["uncoveredAssets"], "0")
 
     def test_unavailable_evidence_never_counts_as_ready(self):
         def unavailable(payload):
@@ -79,7 +93,171 @@ class StatusTests(unittest.TestCase):
         self.rpc.key = [0, 0, 0]
         self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
         with patch("twon20.status.request_json", side_effect=AssertionError("Should not request account evidence")):
-            self.assertFalse(self.check()["tradingAccessReady"])
+            value = self.check()
+        self.assertFalse(value["tradingAccessReady"])
+        self.assertEqual(value["creatorAction"], "Import public consent into Step 2 and approve it with the creator wallet.")
+        self.assertEqual(value["reasons"], [value["creatorAction"]])
+
+    def test_restricted_live_key_needs_no_creator_action(self):
+        self.rpc.restricted = 1
+        self.rpc.restricted_at = self.rpc.now - 300
+        self.rpc.notice_at = self.rpc.restricted_at + 120
+        self.rpc.misses = 2
+        self.rpc.opened = 1
+        self.rpc.uncovered = 2_500_000
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["tradingAccessReady"], True)
+        self.assertEqual(value["release"], self.release(True, True))
+        self.assertEqual(value["release"]["noticeAt"], self.rpc.now - 180)
+        self.assertEqual(value["release"]["cutsAllowedAt"], 1200)
+        self.assertEqual(value["restricted"], True)
+        self.assertNotIn("suspended", value)
+        self.assertNotIn("missLimit", value["release"])
+        self.assertEqual(value["uncoveredAssets"], "2500000")
+        self.assertEqual(value["creatorAction"], "No action needed.")
+
+    def test_poll_lifecycle_reads_the_same_release(self):
+        self.rpc.restricted = 1
+        self.rpc.misses = 2
+        scope = {"approvalContract": self.found.approval_contract, "vault": self.found.vault, "tradingAccount": self.found.trading_account}
+        value = poll_lifecycle(scope, self.rpc, self.rpc.now)
+        self.assertEqual(value["release"], self.release(True))
+        self.assertEqual(value["creatorAction"], "No action needed.")
+        self.assertEqual(value["blockTimestamp"], self.rpc.now)
+
+    def test_release_progress_does_not_invalidate_the_status_read(self):
+        self.rpc.restricted = 1
+        self.rpc.misses = 1
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        self.rpc.misses = 255
+        value = self.check()
+        self.assertEqual(value["tradingAccessReady"], True)
+        self.assertEqual(value["creatorAction"], "No action needed.")
+        self.assertEqual(value["release"]["active"], True)
+        self.assertEqual(value["release"]["misses"], 1)
+
+    def test_many_missed_rounds_leave_the_trading_key_in_place(self):
+        self.rpc.restricted = 1
+        self.rpc.misses = 255
+        self.rpc.cuts_allowed_at = self.rpc.now + 86_400
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["tradingAccessReady"], True)
+        self.assertEqual(value["release"], self.release(True))
+        self.assertEqual(value["release"]["cutsAllowedAt"], self.rpc.now + 86_400)
+        self.assertNotIn("suspended", value)
+        self.assertNotIn("missLimit", value["release"])
+        self.assertEqual(value["creatorAction"], "No action needed.")
+
+    def test_unpriced_price_data_waits_and_keeps_the_key(self):
+        self.rpc.priced = 0
+        self.rpc.unpriced = 1
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["tradingAccessReady"], True)
+        self.assertEqual(value["creatorAction"], "No action needed.")
+        self.assertEqual(value["pricing"]["action"], "waits")
+        self.assertEqual(value["pricing"]["reasons"], [{
+            "name": "PRICE_DATA", "action": "waits",
+            "detail": "Hyperliquid has no usable price for collateral the account holds.",
+        }])
+        self.assertEqual(value["pricing"]["next"], "The vault prices the account again once the data returns.")
+        self.assertIn("The key stays approved.", value["pricing"]["whileUnpriced"])
+        self.assertIn("holders other than the owner can request withdrawals", value["pricing"]["whileUnpriced"])
+
+    def test_unpriced_abstraction_is_repaired_during_a_release(self):
+        self.rpc.priced = 0
+        self.rpc.unpriced = 2
+        self.rpc.restricted = 1
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["tradingAccessReady"], True)
+        self.assertEqual(value["creatorAction"], "No action needed.")
+        self.assertEqual(value["pricing"]["action"], "repair")
+        self.assertEqual(value["pricing"]["reasons"], [{
+            "name": "ABSTRACTION", "action": "repair",
+            "detail": "The trading account is not in standard account mode.",
+        }])
+        self.assertEqual(value["pricing"]["next"], "During a withdrawal release, or while no trading key is active, the vault restores standard account mode.")
+
+    def test_unpriced_staking_needs_the_strategy_and_keeps_the_key(self):
+        self.rpc.priced = 0
+        self.rpc.unpriced = 8
+        self.rpc.restricted = 1
+        self.rpc.misses = 255
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["tradingAccessReady"], True)
+        self.assertEqual(value["creatorAction"], "No action needed.")
+        self.assertEqual(value["release"]["misses"], 255)
+        self.assertEqual(value["pricing"]["action"], "strategy")
+        self.assertEqual(value["pricing"]["reasons"], [{
+            "name": "STAKING", "action": "strategy",
+            "detail": "The account holds staked HYPE.",
+        }])
+        self.assertEqual(value["pricing"]["next"], "The strategy must undo this before the vault can price the account. The vault cannot undo it.")
+        self.assertNotIn("fresh trading key", value["creatorAction"])
+
+    def test_unpriced_staking_after_wind_down_has_no_one_to_undo_it(self):
+        self.rpc.priced = 0
+        self.rpc.unpriced = 8
+        self.rpc.restricted = 1
+        self.rpc.lifecycle = 1
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["pricing"]["action"], "strategy")
+        self.assertEqual(value["pricing"]["next"], "Wind-down removed the strategy's trading key, so neither the vault nor the service can undo this. While it lasts, no request settles, including requests the vault's cash covers, and wind-down cannot complete.")
+        self.assertEqual(value["pricing"]["whileUnpriced"], "Holders can still cancel the unsettled part of a request and claim settled withdrawals, and holders other than the owner can request withdrawals. Share transfers, settlement and the owner's withdrawal requests wait until the account is priced again.")
+
+    def test_a_vault_before_its_first_report_names_no_reason(self):
+        self.rpc.core, self.rpc.priced, self.rpc.report_nonce = "0x" + "0" * 40, 0, 0
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["reasons"], ["The trading account has not been created yet. Wait for vault funding on Step 2."])
+        self.assertEqual(value["pricing"], {"priced": False, "unpriced": 0, "reasons": [], "action": "unreported", "next": "The first valuation report has not landed yet."})
+
+    def test_pending_revocation_says_wait(self):
+        self.rpc.key[1] = 1
+        self.rpc.restricted = 1
+        self.rpc.misses = 255
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertNotIn("suspended", value)
+        self.assertEqual(value["creatorAction"], "A revocation is pending. Wait for it to finish, then approve a fresh trading key. A key that was already used cannot be approved again.")
+
+    def test_expired_key_during_a_release_says_approve_a_fresh_key(self):
+        self.rpc.restricted = 1
+        self.rpc.misses = 1
+        self.rpc.key_status[1] = self.rpc.now
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        value = self.check()
+        self.assertEqual(value["release"], self.release(True))
+        self.assertNotIn("suspended", value)
+        self.assertEqual(value["creatorAction"], "Approve a fresh trading key. A key that was already used cannot be approved again.")
+
+    def test_discovery_rejects_unreviewed_release_rules(self):
+        for name, value in (("release_notice", 60), ("release_round", 300)):
+            rpc = FakeRpc()
+            setattr(rpc, name, value)
+            with self.subTest(name=name), self.assertRaises(SetupError) as caught:
+                discover(LINK, rpc, rpc.now, rpc.anchor)
+            self.assertEqual(caught.exception.code, "UNSUPPORTED_CAPABILITY")
+            self.assertEqual(caught.exception.message, "This approval contract's withdrawal release rules are not the reviewed ones. Setup stops.")
+
+    def test_expired_key_and_fourteen_day_warning(self):
+        self.rpc.key_status[1] = self.rpc.now + 10 * 86400
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        warning = self.check()
+        self.assertTrue(warning["tradingAccessReady"])
+        self.assertTrue(warning["keyExpiryWarning"])
+        self.assertEqual(warning["keyValidUntil"], self.rpc.now + 10 * 86400)
+        self.assertEqual(warning["creatorAction"], "No action needed.")
+        self.rpc.key_status[1] = self.rpc.now
+        self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
+        expired = self.check()
+        self.assertFalse(expired["tradingAccessReady"])
+        self.assertEqual(expired["creatorAction"], "Approve a fresh trading key. A key that was already used cannot be approved again.")
 
     def test_rpc_error_messages_do_not_include_response_payloads(self):
         dangerous_body = "sensitive-disposable-marker"

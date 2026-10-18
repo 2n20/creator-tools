@@ -18,11 +18,12 @@ from feed import FixtureFeed, HyperliquidCandleFeed
 from models import Bar, BarBatch, Target
 from risk import Stop
 from configuration import load_config
-from runtime import Runtime
+from runtime import Runtime, drive, release_reader
 from runtime_adapter import RuntimeAdapter
 from runtime_io import Admission, SerialIO
 from runtime_journal import MAX_BYTES, RuntimeJournal
 from strategy import BandBreakout
+from twon20.errors import SetupError
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -470,6 +471,43 @@ class ChaserTests(unittest.TestCase):
         self.assertEqual(submissions[1]["basePosition"], "0.0")
         self.assertTrue(any(item["child"] is None and Decimal(item["position"]) == 0 for item in self.saved))
 
+    def test_release_hold_refuses_new_risk_and_reduces(self):
+        self.chaser.open_risk_paused = True
+        self.steps(6)
+        self.assertEqual(self.state["phase"], "release_hold")
+        self.assertEqual(self.adapter.calls, [])
+        self.adapter.position = Decimal(1)
+        self.state["position"] = "1"
+        self.chaser.set_target(intent("flat", "0", "0"))
+        self.chaser.open_risk_paused = True
+        self.chaser.next_read = self.now
+        self.steps(6)
+        submits = [call for call in self.adapter.calls if call[0] == "submit"]
+        self.assertEqual(len(submits), 1)
+        self.assertTrue(submits[0][1]["plan"]["reduceOnly"])
+
+    def test_release_pause_does_not_cancel_an_open_reduce_only_child(self):
+        self.adapter.position = Decimal(1)
+        self.state["position"] = "1"
+        self.chaser.set_target(intent("flat", "0", "0"))
+        self.open_child()
+        self.assertTrue(self.state["child"]["plan"]["reduceOnly"])
+        cancels = [call for call in self.adapter.calls if call[0] == "cancel"]
+        self.chaser.open_risk_paused = True
+        self.steps(2, 100)
+        self.assertEqual([call for call in self.adapter.calls if call[0] == "cancel"], cancels)
+        self.assertEqual(self.state["child"]["phase"], "child_open")
+
+    def test_release_pause_cancels_an_open_entry_child_at_once(self):
+        self.open_child()
+        self.assertFalse(self.state["child"]["plan"]["reduceOnly"])
+        oid, submits = self.state["child"]["oid"], len([call for call in self.adapter.calls if call[0] == "submit"])
+        self.assertEqual([call for call in self.adapter.calls if call[0] == "cancel"], [])
+        self.chaser.open_risk_paused = True
+        self.steps(2, 100)
+        self.assertEqual([call for call in self.adapter.calls if call[0] == "cancel"], [("cancel", oid)])
+        self.assertEqual(len([call for call in self.adapter.calls if call[0] == "submit"]), submits)
+
     def test_shutdown_does_not_flatten_owned_position(self):
         self.state["position"] = "1"
         self.chaser.shutdown()
@@ -713,5 +751,251 @@ class SessionRecoveryTests(unittest.TestCase):
         self.assertEqual(recovered.state["execution"]["child"], child)
         self.assertTrue(recovered.admission.stopping.is_set())
         self.assertFalse(recovered.admission.feed_ready.is_set())
+
+class ReleasePauseTests(unittest.TestCase):
+    def view(self, restricted, now, age=0):
+        return {"release": {"active": restricted, "noticeAt": 0, "roundSeconds": 600, "openedThisRound": False,
+                            "misses": 0, "lastMissAt": 0, "cutsAllowedAt": 0},
+                "pricing": {"priced": True, "unpriced": 0, "reasons": [], "action": "priced"},
+                "restricted": restricted, "blockTimestamp": now - age}
+
+    def adapter(self):
+        adapter = FakeAdapter()
+        adapter.transfers = []
+
+        def transfer(amount):
+            adapter.transfers.append(amount)
+            return "submitted"
+        adapter.transfer_perp_to_spot = transfer
+        return adapter
+
+    def runtime(self, adapter, read, release_worker=None, target=True):
+        # Requotes wait past every test, so each cancel here comes from the release pause.
+        settings = config()
+        settings["execution"]["requoteSeconds"] = 60
+        feed = SimpleNamespace(healthy=True, done=True, poll=lambda now_ms: None, close=lambda: None)
+        clock = {"ms": 1_000_000}
+        runtime = Runtime(settings, MemoryJournal(), mode="live", worker=ImmediateIO(), adapter=adapter, reporter=Mock(),
+                          feed=feed, clock=lambda: clock["ms"], lifecycle=read, release_worker=release_worker or ImmediateIO())
+        runtime.clock_box = clock
+        if target:
+            runtime.executor.set_target(intent(now=1_000_000))
+        return runtime
+
+    def ticks(self, runtime, count, advance=100):
+        for _ in range(count):
+            runtime.tick()
+            runtime.clock_box["ms"] += advance
+
+    def settle(self, runtime, ready):
+        limit = time.monotonic() + 2
+        while not ready():
+            self.assertLess(time.monotonic(), limit)
+            runtime.tick()
+            time.sleep(0.001)
+
+    def calls(self, adapter, kind):
+        return [call for call in adapter.calls if call[0] == kind]
+
+    def test_restricted_read_pauses_new_risk_and_an_open_read_resumes_it(self):
+        adapter = self.adapter()
+        current = {"restricted": True}
+        runtime = self.runtime(adapter, lambda now: self.view(current["restricted"], now))
+        self.ticks(runtime, 6)
+        self.assertEqual(runtime.executor.open_risk_paused, True)
+        self.assertEqual(runtime.state["execution"]["phase"], "release_hold")
+        self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": 1_000_000})
+        self.assertEqual(adapter.calls, [])
+        self.assertEqual(adapter.transfers, [])
+        current["restricted"] = False
+        runtime.clock_box["ms"] = 1_005_000
+        self.ticks(runtime, 4)
+        self.assertEqual(runtime.executor.open_risk_paused, False)
+        self.assertEqual(runtime.state["release"], {"paused": False, "observedMs": 1_005_000})
+        submits = self.calls(adapter, "submit")
+        self.assertEqual(len(submits), 1)
+        self.assertEqual(submits[0][1]["plan"]["reduceOnly"], False)
+        self.assertEqual(adapter.transfers, [])
+
+    def test_a_failed_read_pauses_new_risk_and_cancels_the_entry_order(self):
+        adapter = self.adapter()
+        reads = []
+
+        def read(now):
+            reads.append(now)
+            if len(reads) > 1:
+                raise Stop("CHAIN_CHANGED", "Retry the public read.")
+            return self.view(False, now)
+        runtime = self.runtime(adapter, read)
+        self.ticks(runtime, 4)
+        child = runtime.state["execution"]["child"]
+        self.assertEqual(child["phase"], "child_open")
+        self.assertFalse(child["plan"]["reduceOnly"])
+        runtime.clock_box["ms"] = 1_005_000
+        self.ticks(runtime, 2)
+        self.assertEqual(reads, [1000, 1005])
+        self.assertEqual(runtime.executor.open_risk_paused, True)
+        self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": None})
+        self.assertEqual(self.calls(adapter, "cancel"), [("cancel", child["oid"])])
+        self.assertEqual(len(self.calls(adapter, "submit")), 1)
+        self.assertEqual(adapter.transfers, [])
+
+    def test_a_good_read_after_failures_resumes_new_risk(self):
+        adapter = self.adapter()
+        reads, failures = [], [SetupError("CHAIN_CHANGED", "The chain changed during verification. Try again."), TimeoutError()]
+
+        def read(now):
+            reads.append(now)
+            if failures:
+                raise failures.pop(0)
+            return self.view(False, now)
+        worker = SerialIO()
+        runtime = self.runtime(adapter, read, worker)
+        try:
+            for count, moment in enumerate((1_000_000, 1_005_000, 1_010_000), 1):
+                runtime.clock_box["ms"] = moment
+                self.settle(runtime, lambda: len(reads) == count and worker.idle)
+                if count < 3:
+                    self.assertEqual(runtime.executor.open_risk_paused, True)
+                    self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": None})
+                    self.assertEqual(runtime.state["execution"]["phase"], "release_hold")
+                    self.assertEqual(adapter.calls, [])
+            self.ticks(runtime, 4)
+            self.assertEqual(reads, [1000, 1005, 1010])
+            self.assertEqual(runtime.executor.open_risk_paused, False)
+            self.assertEqual(runtime.state["release"], {"paused": False, "observedMs": 1_010_000})
+            submits = self.calls(adapter, "submit")
+            self.assertEqual(len(submits), 1)
+            self.assertFalse(submits[0][1]["plan"]["reduceOnly"])
+        finally:
+            worker.close()
+            worker.thread.join(2)
+        self.assertFalse(worker.thread.is_alive())
+
+    def test_a_read_of_an_old_block_pauses_new_risk(self):
+        adapter = self.adapter()
+        age = {"seconds": 20}
+        runtime = self.runtime(adapter, lambda now: self.view(False, now, age["seconds"]))
+        self.ticks(runtime, 6)
+        self.assertEqual(runtime.executor.open_risk_paused, True)
+        self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": 980_000})
+        self.assertEqual(runtime.state["execution"]["phase"], "release_hold")
+        self.assertEqual(adapter.calls, [])
+        age["seconds"] = 14
+        runtime.clock_box["ms"] = 1_005_000
+        self.ticks(runtime, 4)
+        self.assertEqual(runtime.executor.open_risk_paused, False)
+        self.assertEqual(runtime.state["release"], {"paused": False, "observedMs": 991_000})
+        self.assertEqual(len(self.calls(adapter, "submit")), 1)
+
+    def test_a_blocked_read_does_not_delay_the_loop_and_pauses_new_risk_at_20_seconds(self):
+        adapter = self.adapter()
+        entered, unblock = Event(), Event()
+        reads = []
+
+        def read(now):
+            reads.append(now)
+            if len(reads) == 2:
+                entered.set()
+                unblock.wait(10)
+            return self.view(False, now)
+        worker = SerialIO()
+        runtime = self.runtime(adapter, read, worker, target=False)
+        try:
+            self.settle(runtime, lambda: runtime.state.get("release", {}).get("observedMs") == 1_000_000)
+            runtime.executor.set_target(intent(now=1_000_000))
+            self.ticks(runtime, 4)
+            child = runtime.state["execution"]["child"]
+            self.assertEqual(child["phase"], "child_open")
+            runtime.clock_box["ms"] = 1_005_000
+            runtime.tick()
+            self.assertTrue(entered.wait(2))
+            started = time.monotonic()
+            for moment, paused in ((1_019_999, False), (1_020_000, True)):
+                runtime.clock_box["ms"] = moment
+                runtime.tick()
+                self.assertEqual(runtime.executor.open_risk_paused, paused)
+            self.ticks(runtime, 2)
+            self.assertLess(time.monotonic() - started, 1)
+            self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": 1_000_000})
+            self.assertEqual(self.calls(adapter, "cancel"), [("cancel", child["oid"])])
+            self.assertEqual(len(self.calls(adapter, "submit")), 1)
+            self.assertEqual(reads, [1000, 1005])
+            self.assertFalse(unblock.is_set())
+        finally:
+            unblock.set()
+            worker.close()
+            worker.thread.join(2)
+        self.assertFalse(worker.thread.is_alive())
+
+    def test_a_read_that_ends_after_stop_changes_nothing(self):
+        entered, unblock = Event(), Event()
+        reads = []
+
+        def read(now):
+            reads.append(now)
+            entered.set()
+            unblock.wait(10)
+            return self.view(False, now)
+        worker = SerialIO()
+        runtime = self.runtime(self.adapter(), read, worker)
+        try:
+            runtime.tick()
+            self.assertTrue(entered.wait(2))
+            runtime.stop()
+            unblock.set()
+            limit = time.monotonic() + 2
+            while worker.results.empty():
+                self.assertLess(time.monotonic(), limit)
+                time.sleep(0.001)
+            runtime.clock_box["ms"] += 5_000
+            runtime.tick()
+            self.assertEqual(reads, [1000])
+            self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": None})
+            self.assertEqual(worker.take("release-read"), (True, {"observedMs": 1_000_000, "restricted": False}))
+        finally:
+            unblock.set()
+            worker.close()
+            worker.thread.join(2)
+        self.assertFalse(worker.thread.is_alive())
+
+    def test_drive_returns_after_the_read_in_flight_ends(self):
+        finished = Event()
+
+        def read(now):
+            time.sleep(0.2)
+            finished.set()
+            return self.view(False, now)
+        worker = SerialIO()
+        result = drive(self.runtime(self.adapter(), read, worker))
+        self.assertEqual(result["stage"], "runtime_stopped")
+        self.assertTrue(finished.is_set())
+        self.assertFalse(worker.thread.is_alive())
+
+    def test_each_release_read_gets_the_whole_retry_allowance(self):
+        clock, timeouts = [0.0], []
+
+        def unavailable(url, payload, timeout):
+            timeouts.append(timeout)
+            clock[0] += timeout
+            return {"jsonrpc": "2.0", "id": payload["id"], "error": {"code": -32603}}
+
+        def poll(scope, rpc, now):
+            return rpc.call("eth_getBlockByNumber", ["latest", False])
+        with patch("twon20.status.poll_lifecycle", poll), patch("twon20.rpc.request_json", side_effect=unavailable), \
+                patch("twon20.rpc.time.monotonic", side_effect=lambda: clock[0]), patch("twon20.rpc.time.sleep"):
+            read = release_reader({"approvalContract": "0x" + "1" * 40, "vault": "0x" + "2" * 40, "tradingAccount": "0x" + "3" * 40})
+            for _ in range(2):
+                before = len(timeouts)
+                with self.assertRaises(SetupError):
+                    read(1000)
+                self.assertEqual(timeouts[before:], [15, 15, 3.0])
+
+    def test_paper_runtime_does_not_poll_or_transfer(self):
+        feed = SimpleNamespace(healthy=True, poll=lambda now_ms: None)
+        paper = Runtime(config(), MemoryJournal(), worker=ImmediateIO(), reporter=Mock(), feed=feed, clock=lambda: 1000)
+        paper.tick()
+        self.assertEqual("release" in paper.state, False)
+
 
 if __name__ == "__main__": unittest.main()

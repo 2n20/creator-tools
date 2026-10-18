@@ -17,7 +17,7 @@ FIELDS = frozenset({"schema", "chainId", "venue", "vault", "key", "nonce", "dead
 
 
 def typed_data(found: Discovery, key: str, nonce: int, deadline: int) -> dict:
-    return {"domain": {"name": "2n20 SDK venue", "version": "1", "chainId": found.anchor["chainId"], "verifyingContract": found.approval_contract},
+    return {"domain": {"name": "2n20 SDK venue", "version": "2", "chainId": found.anchor["chainId"], "verifyingContract": found.approval_contract},
             "primaryType": "TradingKeyConsent",
             "types": {"EIP712Domain": [{"name": "name", "type": "string"}, {"name": "version", "type": "string"}, {"name": "chainId", "type": "uint256"}, {"name": "verifyingContract", "type": "address"}],
                       "TradingKeyConsent": [{"name": "vault", "type": "address"}, {"name": "key", "type": "address"}, {"name": "nonce", "type": "uint64"}, {"name": "deadline", "type": "uint64"}]},

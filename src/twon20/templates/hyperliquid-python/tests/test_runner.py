@@ -472,6 +472,7 @@ class AdapterTests(unittest.TestCase):
         with patch("adapter.time.time", return_value=now/1000):
             result = adapter.snapshot("BTC")
         self.assertEqual(result["perp_available"], Decimal(20))
+        self.assertEqual(result["withdrawable"], Decimal(20))
         self.assertEqual(result["spot_available"], Decimal(20))
         info.user_state.assert_called_with(ACCOUNT)
         info.open_orders.assert_called_with(ACCOUNT)

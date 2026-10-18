@@ -95,6 +95,7 @@ class LimitChaser:
         self.state, self.commit, self.report = state, commit, report
         self.admission, self.worker, self.adapter, self.limits = admission, worker, adapter, limits
         self.job, self.snapshot, self.observed_ms, self.next_read = None, None, 0, 0
+        self.open_risk_paused = False
 
     def recover(self):
         # Prepared means never dispatched, but restarting does not reuse its
@@ -230,7 +231,8 @@ class LimitChaser:
         if child:
             needs_cancel = (self.admission.stopping.is_set() or not self.admission.feed_ready.is_set()
                             or not self.admission.feed_check() or state["pending"] is not None
-                            or now_ms >= active["deadlineMs"] or now_ms - child["startedMs"] >= self.limits["requoteSeconds"] * 1000)
+                            or now_ms >= active["deadlineMs"] or now_ms - child["startedMs"] >= self.limits["requoteSeconds"] * 1000
+                            or self.open_risk_paused and not child["plan"]["reduceOnly"])
             if needs_cancel and child.get("oid") is not None and child["phase"] in {"child_open", "evidence_pending"} and not child.get("terminal") and not child.get("cancelAwaitingEvidence"):
                 child["phase"] = "cancel_uncertain"
                 child["cancelAwaitingEvidence"] = True
@@ -283,6 +285,12 @@ class LimitChaser:
             if state["phase"] != "residual_dust":
                 state["phase"] = "residual_dust"
                 self.report("residual_dust", active)
+                self.commit()
+            return
+        if self.open_risk_paused and not plan["reduceOnly"]:
+            if state["phase"] != "release_hold":
+                state["phase"] = "release_hold"
+                self.report("release_hold", active)
                 self.commit()
             return
         state["sequence"] += 1

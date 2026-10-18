@@ -132,7 +132,8 @@ class Adapter:
             state = self.read(self.info.user_state, account)
             fresh(state["time"])
             summary = state["marginSummary"]
-            perp_available = min(number(state["withdrawable"]), max(number(summary["accountValue"]) - number(summary["totalMarginUsed"]), number(0)))
+            withdrawable = number(state["withdrawable"])
+            perp_available = min(withdrawable, max(number(summary["accountValue"]) - number(summary["totalMarginUsed"]), number(0)))
             positions, seen_coins = {}, set()
             if not isinstance(state["assetPositions"], list) or len(state["assetPositions"]) > 2000:
                 raise ValueError()
@@ -180,7 +181,7 @@ class Adapter:
                     "bid": bid, "ask": ask, "positions": positions, "orders": orders,
                     "bidDepth": bid * number(book["levels"][0][0]["sz"]), "askDepth": ask * number(book["levels"][1][0]["sz"]),
                     "dayNotionalVolume": number(contexts[index]["dayNtlVlm"]) if "dayNtlVlm" in contexts[index] else None,
-                    "perp_available": perp_available, "spot_available": spot_available, "taker_fee": fee,
+                    "perp_available": perp_available, "withdrawable": withdrawable, "spot_available": spot_available, "taker_fee": fee,
                     "checkedAt": int(time.time()), "accountMode": "standard", "collateral": "native USDC"}
         except Stop:
             raise
@@ -367,8 +368,7 @@ class Adapter:
         from hyperliquid.utils.signing import sign_l1_action
         # SDK 0.24.0 has no agentSendAsset convenience method. The documented
         # action uses its public signer and HTTP API; no signing implementation
-        # or custom transport is duplicated here. Owner-signed usdClassTransfer
-        # and sendAsset are deliberately not used for an approved agent key.
+        # or custom transport is duplicated here.
         action = {"type": "agentSendAsset", "destination": self.access.scope["tradingAccount"],
                   "sourceDex": "spot", "destinationDex": "", "token": token,
                   "amount": str(amount), "fromSubAccount": "", "nonce": nonce}

@@ -16,6 +16,15 @@ from runtime_io import Admission, SerialIO
 from runtime_journal import MAX_HISTORY, MAX_REPORTS, RuntimeJournal
 from strategy import BandBreakout
 
+RELEASE_POLL_MS = 5000
+# New risk waits for a release read of a block at most 20 s old. Reads start every
+# 5 s, so only reads slower than about 9 s reach that age, and at least 100 s of
+# the vault's 120 s notice remain to cancel an entry order before the first round.
+RELEASE_STALE_MS = 20000
+# A read in flight at shutdown gets one RPC request timeout to finish. Its daemon
+# thread only reads, so a hung request cannot hold the process open after that.
+RELEASE_JOIN_SECONDS = 15
+
 
 def fingerprint(config):
     # Source changes to the replaceable strategy require a reviewed migration,
@@ -50,10 +59,14 @@ class Runtime:
     The foreground loop waits at most 100 ms between stop checks. The shared
     daemon worker may still be in an SDK request after a bounded shutdown
     grace. That leaves a durable unresolved identity, never a canceled request.
+    Release reads use a second worker, so a slow RPC cannot hold back an order
+    or cancel on the shared one.
     """
     def __init__(self, config, journal, mode="paper", worker=None, adapter=None, reporter=None,
-                 feed=None, strategy=None, executor_factory=None, session_seconds=None, clock=None, recover_only=False):
-        self.config, self.journal, self.mode = config, journal, mode
+                 feed=None, strategy=None, executor_factory=None, session_seconds=None, clock=None, recover_only=False,
+                 lifecycle=None, release_worker=None):
+        self.config, self.journal, self.mode, self.adapter, self.lifecycle = config, journal, mode, adapter, lifecycle
+        self.release_read, self.release_started = None, None
         self.recover_only = recover_only
         self.clock = clock or (lambda: int(time.time() * 1000))
         self.worker = worker or SerialIO()
@@ -94,6 +107,7 @@ class Runtime:
         self.batch_offset = 0
         self.commit()
         self.executor.recover()
+        self.release_worker = (release_worker or SerialIO()) if lifecycle else None
         if recover_only:
             self.stop()
 
@@ -198,7 +212,32 @@ class Runtime:
             self.commit()
         if ready and self.pending_batch is None:
             self.admission.feed_ready.set()
+        self.apply_release(now_ms)
         self.executor.step(now_ms)
+
+    def apply_release(self, now_ms):
+        if self.lifecycle is None or self.admission.stopping.is_set():
+            return
+        result = self.release_worker.take("release-read")
+        if result is not None:
+            ok, read = result
+            self.release_read = read if ok else None
+        # An age below zero means the clock moved back: read again, and treat the last read as stale.
+        due = self.release_started is None or not 0 <= now_ms - self.release_started < RELEASE_POLL_MS
+        if due and self.release_worker.submit("release-read", lambda: self.read_release(now_ms)):
+            self.release_started = now_ms
+        read = self.release_read
+        paused = read is None or read["restricted"] or not 0 <= now_ms - read["observedMs"] < RELEASE_STALE_MS
+        self.executor.open_risk_paused = paused
+        entry = {"paused": paused, "observedMs": read["observedMs"] if read else None}
+        if self.state.get("release") != entry:
+            self.state["release"] = entry
+            self.commit()
+
+    def read_release(self, started_ms):
+        """Runs on the release worker and touches no runtime state."""
+        view = self.lifecycle(started_ms // 1000)
+        return {"observedMs": min(started_ms, view["blockTimestamp"] * 1000), "restricted": bool(view["restricted"])}
 
     def stop(self):
         self.admission.stopping.set()
@@ -232,6 +271,10 @@ def drive(runtime, max_bars=None, max_seconds=None):
             runtime.admission.stopping.wait(0.1)
     finally:
         runtime.stop()
+        # The signal handler may interrupt submit() while it holds the release
+        # queue's lock, so the worker closes here rather than in stop().
+        if runtime.release_worker is not None:
+            runtime.release_worker.close()
         runtime.feed.close()
         # Retain any request still in flight after the cleanup budget. Do not
         # clear the child or account reservation because a thread timed out.
@@ -249,6 +292,8 @@ def drive(runtime, max_bars=None, max_seconds=None):
             runtime.worker.close(finalizer=getattr(runtime.feed, "dispose", None))
         else:
             runtime.worker.close()
+        if isinstance(runtime.release_worker, SerialIO):
+            runtime.release_worker.thread.join(RELEASE_JOIN_SECONDS)
         for sig, previous in old_handlers.items():
             signal.signal(sig, previous)
     return runtime.result()
@@ -286,6 +331,17 @@ def rearm_session(journal, config, adapter, seconds, recover_only=False, clock=N
                 execution[key]["deadlineMs"] = now + config["execution"]["chaseSeconds"] * 1000
         execution.update(phase="ready", error=None, childCount=0)
     journal.save_runtime(state)
+
+
+def release_reader(scope):
+    """Read the vault's release state through a fresh Rpc each time.
+
+    Each read gets the whole retry allowance, so a slow read cannot spend the
+    next one's. The CLI's commands keep one Rpc, and one allowance, per run.
+    """
+    from twon20.rpc import Rpc
+    from twon20.status import poll_lifecycle
+    return lambda now: poll_lifecycle(scope, Rpc("mainnet"), now)
 
 
 def run_command(args):
@@ -334,7 +390,8 @@ def run_command(args):
         stack.callback(worker.close)
         reporter = TelegramReporter() if config["reporting"]["telegram"] else ConsoleReporter()
         stack.callback(reporter.close)
-        runtime = Runtime(config, journal, args.mode, worker, adapter, reporter, session_seconds=args.max_seconds if args.mode == "live" else None, recover_only=args.recover_only)
+        lifecycle = release_reader(access.scope) if args.mode == "live" and args.execute else None
+        runtime = Runtime(config, journal, args.mode, worker, adapter, reporter, session_seconds=args.max_seconds if args.mode == "live" else None, recover_only=args.recover_only, lifecycle=lifecycle)
         if args.feed == "public" and not args.recover_only:
             runtime.feed = HyperliquidCandleFeed(worker, config["market"], config["interval"], runtime.history)
             runtime.admission.feed_check = runtime.feed.admission_ready

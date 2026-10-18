@@ -20,6 +20,15 @@ ZERO = "0x" + "0" * 40
 HASH = re.compile(r"0x[0-9a-fA-F]{64}\Z")
 ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}\Z")
 UINT64_MAX = 2 ** 64 - 1
+TRADING_KEY_VERSION = 4
+RELEASE_NOTICE_SECONDS = 120
+RELEASE_ROUND_SECONDS = 600
+RELEASE_WORDS = 10
+BOOK_WORDS = 16
+KEY_WORDS = 7
+STRIKE_WORDS = 2
+UNPRICED_LIMIT = 511
+MISMATCH = "The public trading-account state is inconsistent."
 
 
 def address(value, allow_zero=False) -> str:
@@ -79,6 +88,141 @@ def code_bytes(value) -> bytes:
     return bytes.fromhex(value[2:])
 
 
+def uint64(value) -> int:
+    if type(value) is not int or not 0 <= value <= UINT64_MAX:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    return value
+
+
+def flag(value) -> bool:
+    if type(value) is not int or value not in (0, 1):
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    return bool(value)
+
+
+def word256(value) -> int:
+    if type(value) is not int or not 0 <= value < 2 ** 256:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    return value
+
+
+@dataclass(frozen=True)
+class Book:
+    core: str
+    phase: int
+    state_nonce: int
+    report_nonce: int
+    observed_at: int
+    restricted_at: int
+    restricted: bool
+    recovered: bool
+    priced: bool
+    unpriced: int
+    core_assets: int
+    pending_assets: int
+    evm_baseline: int
+    exposure: int
+    orders: int
+    report_hash: int
+    words: tuple
+
+
+@dataclass(frozen=True)
+class Key:
+    requested: str
+    revocation_pending: bool
+    nonce: int
+    confirmed: str
+    valid_until: int
+    nominator: str
+    replacement: str
+    words: tuple
+
+
+def parse_book(words, core: str) -> Book:
+    if len(words) != BOOK_WORDS:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    parsed = decoded_address(words[0], True)
+    phase = words[1]
+    if type(phase) is not int or phase not in (0, 1, 2, 3) or parsed != core:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    unpriced = words[9]
+    if type(unpriced) is not int or not 0 <= unpriced <= UNPRICED_LIMIT:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    priced = flag(words[8])
+    report_nonce = uint64(words[3])
+    # Every report names a reason exactly when it leaves the account unpriced. A book no report has reached is unpriced with none.
+    if (priced and unpriced) or (not priced and not unpriced and report_nonce):
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    orders = words[14]
+    if type(orders) is not int or not 0 <= orders <= 2 ** 32 - 1:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    exposure = word256(words[13])
+    return Book(parsed, phase, uint64(words[2]), report_nonce, uint64(words[4]), uint64(words[5]),
+                flag(words[6]), flag(words[7]), priced, unpriced, word256(words[10]), word256(words[11]), word256(words[12]),
+                exposure - 2 ** 256 if exposure >= 2 ** 255 else exposure, orders, word256(words[15]), tuple(words))
+
+
+def parse_key(words) -> Key:
+    if len(words) != KEY_WORDS:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    return Key(decoded_address(words[0], True), flag(words[1]), uint64(words[2]), decoded_address(words[3], True),
+               uint64(words[4]), decoded_address(words[5], True), decoded_address(words[6], True), tuple(words))
+
+
+@dataclass(frozen=True)
+class Release:
+    round_at: int
+    need: int
+    released: int
+    captured: int
+    opened: bool
+    executed: bool
+    pending: int
+    pending_margin: int
+    cancelled: int
+    notice_at: int
+    words: tuple
+
+
+def parse_release(words) -> Release:
+    if len(words) != RELEASE_WORDS:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    return Release(uint64(words[0]), uint64(words[1]), uint64(words[2]), uint64(words[3]), flag(words[4]), flag(words[5]),
+                   uint64(words[6]), uint64(words[7]), uint64(words[8]), uint64(words[9]), tuple(words))
+
+
+@dataclass(frozen=True)
+class Strikes:
+    misses: int
+    last_miss_at: int
+    words: tuple
+
+
+def parse_strikes(words) -> Strikes:
+    if len(words) != STRIKE_WORDS:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    misses = words[0]
+    if type(misses) is not int or not 0 <= misses <= 255:
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    return Strikes(misses, uint64(words[1]), tuple(words))
+
+
+def read_account(rpc: Rpc, venue: str, vault: str, core: str, block: dict):
+    if rpc.words(venue, "tradingKeyVersion()", [], block, 1) != [TRADING_KEY_VERSION]:
+        raise SetupError("UNSUPPORTED_CAPABILITY", "This approval contract's trading-key version is not 4. Setup stops. No key was created.")
+    if rpc.words(venue, "RELEASE_NOTICE()", [], block, 1) != [RELEASE_NOTICE_SECONDS] or rpc.words(venue, "RELEASE_ROUND()", [], block, 1) != [RELEASE_ROUND_SECONDS]:
+        raise SetupError("UNSUPPORTED_CAPABILITY", "This approval contract's withdrawal release rules are not the reviewed ones. Setup stops.")
+    book = parse_book(tuple(rpc.words(venue, "books(address)", [vault], block, BOOK_WORDS)), core)
+    key = parse_key(tuple(rpc.words(venue, "keys(address)", [vault], block, KEY_WORDS)))
+    release = parse_release(tuple(rpc.words(venue, "releases(address)", [vault], block, RELEASE_WORDS)))
+    strikes = parse_strikes(tuple(rpc.words(venue, "strikes(address)", [vault], block, STRIKE_WORDS)))
+    cuts_allowed_at = uint64(rpc.words(venue, "cutsAllowedAt(address)", [vault], block, 1)[0])
+    uncovered = rpc.words(vault, "uncoveredAssets()", [], block, 1)[0]
+    word256(uncovered)
+    return book, key, release, strikes, cuts_allowed_at, uncovered
+
+
 @dataclass(frozen=True)
 class Discovery:
     vault: str
@@ -94,11 +238,14 @@ class Discovery:
     block_number: int
     block_hash: str
     timestamp: int
-    book: tuple
-    observation: tuple
-    key_status: tuple
+    book: Book
+    key: Key
+    release: Release
+    strikes: Strikes
+    cuts_allowed_at: int
     lifecycle: int
     pending_requests: int
+    uncovered: int
 
     @property
     def fixed(self) -> dict:
@@ -150,27 +297,19 @@ def discover(link: str, rpc: Rpc | None = None, now: int | None = None, anchor: 
         raise SetupError("UNSUPPORTED_VAULT", "This vault does not use the reviewed vault implementation.")
     if identity(vault, "venue()") != venue or identity(vault, "asset()") != asset or identity(venue, "asset()") != asset or identity(venue, "operator()") != address(anchor["venue"]["operator"]):
         raise SetupError("VAULT_BINDING_MISMATCH", "The vault, approval contract and deployment bindings do not match.")
-    if read(venue, "tradingKeyVersion()") != [2]:
-        raise SetupError("UNSUPPORTED_CAPABILITY", "This approval contract does not support the required consent format.")
     owner = identity(vault, "owner()")
     core = decoded_address(read(venue, "coreAccountOf(address)", [vault])[0], True)
-    book = tuple(read(venue, "book(address)", [vault], 4))
-    observation = tuple(read(venue, "observationState(address)", [vault], 4))
-    key = read(venue, "tradingKeys(address)", [vault], 3)
-    key_status = tuple(read(venue, "tradingKeyStatus(address)", [vault], 4))
+    book, key, release, strikes, cuts_allowed_at, uncovered = read_account(rpc, venue, vault, core, fixed)
     lifecycle = read(vault, "lifecycle()")[0]
     pending_requests = read(vault, "pendingRequestCount()")[0]
-    if decoded_address(book[0], True) != core or book[1] not in (0, 1, 2, 3) or book[2] != observation[0] or any(item > UINT64_MAX for item in (book[2], observation[0], observation[1], observation[2], key[2], key_status[1])) or key[1] not in (0, 1) or lifecycle not in (0, 1, 2):
-        raise SetupError("ACCOUNT_BINDING_MISMATCH", "The public trading-account state is inconsistent.")
-    for position in (0, 2, 3):
-        decoded_address(key_status[position], True)
-    requested = decoded_address(key[0], True)
-    if key[2] == UINT64_MAX:
+    if lifecycle not in (0, 1, 2):
+        raise SetupError("ACCOUNT_BINDING_MISMATCH", MISMATCH)
+    if key.nonce == UINT64_MAX:
         raise SetupError("NONCE_EXHAUSTED", "This vault cannot request another trading key.")
     if core != ZERO:
         if not code_bytes(rpc.call("eth_getCode", [core, fixed])) or identity(core, "vault()") != vault or identity(core, "venue()") != venue or identity(core, "asset()") != asset:
             raise SetupError("ACCOUNT_BINDING_MISMATCH", "The trading account is not bound to this vault and approval contract.")
-    found = Discovery(vault, network, canonical_link, anchor, owner, venue, core, requested, bool(key[1]), key[2], number, block_hash, timestamp, book, observation, key_status, lifecycle, pending_requests)
+    found = Discovery(vault, network, canonical_link, anchor, owner, venue, core, key.requested, key.revocation_pending, key.nonce, number, block_hash, timestamp, book, key, release, strikes, cuts_allowed_at, lifecycle, pending_requests, uncovered)
     verify_current(found, rpc, now)
     return found
 
@@ -188,11 +327,11 @@ def verify_current(found: Discovery, rpc: Rpc, now: int | None = None):
     fixed = {"blockHash": head_hash, "requireCanonical": True}
     checks = [(found.vault, "venue()", [], [int(found.approval_contract, 16)]),
               (found.vault, "owner()", [], [int(found.owner, 16)]),
-              (found.approval_contract, "tradingKeys(address)", [found.vault], [int(found.requested_key, 16), int(found.revocation_pending), found.nonce]),
-              (found.approval_contract, "book(address)", [found.vault], list(found.book)),
-              (found.approval_contract, "tradingKeyStatus(address)", [found.vault], list(found.key_status)),
+              (found.approval_contract, "keys(address)", [found.vault], list(found.key.words)),
+              (found.approval_contract, "books(address)", [found.vault], list(found.book.words)),
               (found.vault, "lifecycle()", [], [found.lifecycle]),
-              (found.vault, "pendingRequestCount()", [], [found.pending_requests])]
+              (found.vault, "pendingRequestCount()", [], [found.pending_requests]),
+              (found.vault, "uncoveredAssets()", [], [found.uncovered])]
     for target, signature, args, expected in checks:
         if rpc.words(target, signature, args, fixed, len(expected)) != expected:
             raise SetupError("STATE_CHANGED", "The vault state or approval nonce changed during verification. Try again before importing consent.")

@@ -3,9 +3,86 @@
 import time
 from decimal import Decimal, InvalidOperation
 
-from .discovery import Discovery, ZERO, address, decoded_address, verify_current
+from .discovery import RELEASE_ROUND_SECONDS, ZERO, Discovery, Key, Book, Release, Strikes, address, block_identity, read_account, verify_current
 from .errors import SetupError
 from .rpc import INFO_URLS, Rpc, request_json
+
+KEY_EXPIRY_WARNING_SECONDS = 14 * 24 * 60 * 60
+FRESH_KEY = "Approve a fresh trading key. A key that was already used cannot be approved again."
+WAIT_FOR_REVOCATION = "A revocation is pending. Wait for it to finish, then approve a fresh trading key. A key that was already used cannot be approved again."
+IMPORT_CONSENT = "Import public consent into Step 2 and approve it with the creator wallet."
+NO_ACTION = "No action needed."
+WHILE_UNPRICED = "Holders can still cancel the unsettled part of a request and claim settled withdrawals, and holders other than the owner can request withdrawals. Deposits, share transfers, settlement and the owner's withdrawal requests wait until the account is priced again. The key stays approved."
+WHILE_UNPRICED_WOUND_DOWN = "Holders can still cancel the unsettled part of a request and claim settled withdrawals, and holders other than the owner can request withdrawals. Share transfers, settlement and the owner's withdrawal requests wait until the account is priced again."
+STRANDED = "Wind-down removed the strategy's trading key, so neither the vault nor the service can undo this. While it lasts, no request settles, including requests the vault's cash covers, and wind-down cannot complete."
+# Reason names and actions match the website's unpriced copy. `waits` clears when data returns.
+# `repair` is undone by the venue during a release. `strategy` needs the strategy to undo it.
+UNPRICED_REASONS = (
+    (1, "PRICE_DATA", "waits", "Hyperliquid has no usable price for collateral the account holds."),
+    (128, "READ_INCOMPLETE", "waits", "Part of the account read did not finish."),
+    (2, "ABSTRACTION", "repair", "The trading account is not in standard account mode."),
+    (4, "VAULT_EQUITY", "repair", "The account holds equity in a Hyperliquid vault."),
+    (8, "STAKING", "strategy", "The account holds staked HYPE."),
+    (16, "SUB_ACCOUNT", "strategy", "The account has sub-accounts."),
+    (32, "BORROW_LEND", "strategy", "The account borrows, lends or owes spot debt."),
+    (64, "BUILDER_DEX", "strategy", "The account holds a position, order or collateral on a builder-deployed market without a USDC price."),
+    (256, "OTHER", "strategy", "The account value is negative or cannot be computed."),
+)
+
+
+def pricing_public(book: Book, wound_down: bool = False) -> dict:
+    reasons = [{"name": name, "action": action, "detail": detail} for bit, name, action, detail in UNPRICED_REASONS if book.unpriced & bit]
+    repairs = []
+    if book.unpriced & 2:
+        repairs.append("restores standard account mode")
+    if book.unpriced & 4:
+        repairs.append("withdraws the Hyperliquid vault equity once its lockup ends")
+    if book.priced:
+        summary, nxt = "priced", None
+    elif not reasons:
+        summary, nxt = "unreported", "The first valuation report has not landed yet."
+    elif any(item["action"] == "strategy" for item in reasons):
+        summary, nxt = "strategy", STRANDED if wound_down else "The strategy must undo this before the vault can price the account. The vault cannot undo it."
+    elif repairs:
+        summary, nxt = "repair", f"During a withdrawal release, or while no trading key is active, the vault {' and '.join(repairs)}."
+    else:
+        summary, nxt = "waits", "The vault prices the account again once the data returns."
+    result = {"priced": book.priced, "unpriced": book.unpriced, "reasons": reasons, "action": summary}
+    if nxt:
+        result["next"] = nxt
+    if reasons:
+        result["whileUnpriced"] = WHILE_UNPRICED_WOUND_DOWN if wound_down else WHILE_UNPRICED
+    return result
+
+
+def lifecycle_public(book: Book, key: Key, release: Release, strikes: Strikes, cuts_allowed_at: int, uncovered: int, now: int, wound_down: bool = False) -> dict:
+    expired = key.valid_until != 0 and key.valid_until <= now
+    key_gone = key.confirmed == ZERO and key.requested == ZERO and key.nonce > 0 and not key.revocation_pending
+    if key.revocation_pending:
+        action = WAIT_FOR_REVOCATION
+    elif expired or key_gone:
+        action = FRESH_KEY
+    elif key.requested == ZERO and key.nonce == 0:
+        action = IMPORT_CONSENT
+    else:
+        action = NO_ACTION
+    return {"release": {"active": book.restricted, "noticeAt": release.notice_at, "roundSeconds": RELEASE_ROUND_SECONDS,
+                        "openedThisRound": release.opened, "misses": strikes.misses, "lastMissAt": strikes.last_miss_at,
+                        "cutsAllowedAt": cuts_allowed_at},
+            "pricing": pricing_public(book, wound_down),
+            "restricted": book.restricted, "keyValidUntil": key.valid_until,
+            "keyExpiryWarning": key.valid_until > now and key.valid_until - now <= KEY_EXPIRY_WARNING_SECONDS,
+            "creatorAction": action, "uncoveredAssets": str(uncovered)}
+
+
+def poll_lifecycle(scope: dict, rpc: Rpc, now: int | None = None) -> dict:
+    now = int(time.time()) if now is None else now
+    number, block_hash, timestamp = block_identity(rpc.call("eth_getBlockByNumber", ["latest", False]), now)
+    block = {"blockHash": block_hash, "requireCanonical": True}
+    book, key, release, strikes, cuts_allowed_at, uncovered = read_account(rpc, scope["approvalContract"], scope["vault"], scope["tradingAccount"], block)
+    if block_identity(rpc.call("eth_getBlockByNumber", [hex(number), False]))[:2] != (number, block_hash):
+        raise SetupError("CHAIN_CHANGED", "The chain changed during verification. Try again.")
+    return lifecycle_public(book, key, release, strikes, cuts_allowed_at, uncovered, now) | {"blockTimestamp": timestamp}
 
 
 def decimal(value) -> Decimal:
@@ -23,18 +100,19 @@ def decimal(value) -> Decimal:
 def status(found: Discovery, rpc: Rpc, now: int | None = None, info=None) -> dict:
     now = int(time.time()) if now is None else now
     info = info if info is not None else lambda payload: request_json(INFO_URLS[found.network], payload)
+    view = lifecycle_public(found.book, found.key, found.release, found.strikes, found.cuts_allowed_at, found.uncovered, now, found.lifecycle != 0)
     result = found.public() | {"tradingAccessReady": False, "strategyConnectionTested": False,
-                              "checkedAt": now, "evidence": "unavailable", "reasons": []}
+                              "checkedAt": now, "evidence": "unavailable", "reasons": []} | view
     reasons = result["reasons"]
     if found.trading_account == ZERO:
         reasons.append("The trading account has not been created yet. Wait for vault funding on Step 2.")
         return result
     if found.requested_key == ZERO:
-        reasons.append("Import public consent into Step 2 and approve it with the creator wallet.")
+        reasons.append(view["creatorAction"])
         return result
-    if found.lifecycle != 0 or found.book[1] != 0 or found.pending_requests or found.revocation_pending:
-        reasons.append("The vault has a pending operation, withdrawal, revocation or closed lifecycle.")
-    if decoded_address(found.key_status[0], True) != found.requested_key or decoded_address(found.key_status[2], True) != found.owner or found.key_status[1] <= now:
+    if found.lifecycle != 0 or found.book.phase != 0 or found.revocation_pending:
+        reasons.append("The vault has a pending operation, revocation or closed lifecycle.")
+    if found.key.confirmed != found.requested_key or found.key.nominator != found.owner or found.key.valid_until <= now:
         reasons.append("The approval contract has not confirmed current trading access.")
     try:
         role = info({"type": "userRole", "user": found.requested_key})
