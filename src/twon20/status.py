@@ -14,7 +14,7 @@ IMPORT_CONSENT = "Import public consent into Step 2 and approve it with the crea
 NO_ACTION = "No action needed."
 WHILE_UNPRICED = "Holders can still cancel the unsettled part of a request and claim settled withdrawals, and holders other than the owner can request withdrawals. Deposits, share transfers, settlement and the owner's withdrawal requests wait until the account is priced again. The key stays approved."
 WHILE_UNPRICED_WOUND_DOWN = "Holders can still cancel the unsettled part of a request and claim settled withdrawals, and holders other than the owner can request withdrawals. Share transfers, settlement and the owner's withdrawal requests wait until the account is priced again."
-STRANDED = "Wind-down removed the strategy's trading key, so neither the vault nor the service can undo this. While it lasts, no request settles, including requests the vault's cash covers, and wind-down cannot complete."
+STRANDED = "The trading key was removed before wind-down. Neither the vault nor the service can undo this state. While it lasts, no request settles, including requests the vault's cash covers, and wind-down cannot complete."
 # Reason names and actions match the website's unpriced copy. `waits` clears when data returns.
 # `repair` is undone by the venue during a release. `strategy` needs the strategy to undo it.
 UNPRICED_REASONS = (

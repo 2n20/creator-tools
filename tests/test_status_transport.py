@@ -207,7 +207,7 @@ class StatusTests(unittest.TestCase):
         self.found = discover(LINK, self.rpc, self.rpc.now, self.rpc.anchor)
         value = self.check()
         self.assertEqual(value["pricing"]["action"], "strategy")
-        self.assertEqual(value["pricing"]["next"], "Wind-down removed the strategy's trading key, so neither the vault nor the service can undo this. While it lasts, no request settles, including requests the vault's cash covers, and wind-down cannot complete.")
+        self.assertEqual(value["pricing"]["next"], "The trading key was removed before wind-down. Neither the vault nor the service can undo this state. While it lasts, no request settles, including requests the vault's cash covers, and wind-down cannot complete.")
         self.assertEqual(value["pricing"]["whileUnpriced"], "Holders can still cancel the unsettled part of a request and claim settled withdrawals, and holders other than the owner can request withdrawals. Share transfers, settlement and the owner's withdrawal requests wait until the account is priced again.")
 
     def test_a_vault_before_its_first_report_names_no_reason(self):
