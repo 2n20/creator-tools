@@ -4,6 +4,7 @@ import time
 from decimal import Decimal, InvalidOperation
 
 from .discovery import RELEASE_ROUND_SECONDS, ZERO, Discovery, Key, Book, Release, Strikes, address, block_identity, read_account, verify_current, word256
+from .withdrawals import pending_withdrawals_at, unavailable_pending_withdrawals
 from .errors import SetupError
 from .rpc import INFO_URLS, Rpc, request_json
 
@@ -143,11 +144,15 @@ def status(found: Discovery, rpc: Rpc, now: int | None = None, info=None) -> dic
     view = lifecycle_public(found.book, found.key, found.release, found.strikes, found.cuts_allowed_at, found.uncovered, now, found.lifecycle != 0)
     result = found.public() | {"tradingAccessReady": False, "strategyConnectionTested": False,
                               "checkedAt": now, "evidence": "unavailable", "reasons": [],
-                              "cashTarget": cash_target_public(found, rpc, now)} | view
+                              "cashTarget": cash_target_public(found, rpc, now),
+                              "pendingWithdrawals": pending_withdrawals_at(rpc, found.vault, found.trading_account, found.book,
+                                  found.block_number, found.block_hash, found.timestamp, now)} | view
     def finish() -> dict:
         completed_at = max(now, int(time.time()))
         if completed_at - found.timestamp > 300 or (found.trading_account != ZERO and completed_at - found.book.observed_at > CASH_REPORT_TTL_SECONDS):
             result["cashTarget"] = unavailable_cash_target()
+        if completed_at - found.timestamp > 45 or (found.book.phase == 0 and found.trading_account != ZERO and completed_at - found.book.observed_at > 45):
+            result["pendingWithdrawals"] = unavailable_pending_withdrawals()
         return result
 
     reasons = result["reasons"]
@@ -214,5 +219,6 @@ def status(found: Discovery, rpc: Rpc, now: int | None = None, info=None) -> dic
         result["availableUsdc"] = str(usdc)
         result["tradingAccessReady"] = not reasons
     except (SetupError, KeyError, TypeError, ValueError):
+        result["pendingWithdrawals"] = unavailable_pending_withdrawals()
         reasons.append("Public Hyperliquid evidence is unavailable or inconsistent. Readiness is unverified; check again later.")
     return finish()

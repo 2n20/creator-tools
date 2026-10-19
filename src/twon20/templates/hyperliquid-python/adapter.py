@@ -87,6 +87,12 @@ class Access:
         self.scope = scope
         return self.evidence
 
+    def pending_withdrawals(self):
+        """Fresh public demand for custom strategies before a release becomes restricted."""
+        from twon20.rpc import Rpc
+        from twon20.withdrawals import poll_pending_withdrawals
+        return poll_pending_withdrawals(self.scope, Rpc("mainnet"))
+
     def signer(self):
         # The only private read belongs inside the intended runtime, immediately
         # before an explicitly authorized SDK write. Never return key material.

@@ -998,4 +998,18 @@ class ReleasePauseTests(unittest.TestCase):
         self.assertEqual("release" in paper.state, False)
 
 
+class PendingWithdrawalAccessTests(unittest.TestCase):
+    def test_public_signal_read_never_loads_signer(self):
+        from adapter import Access
+        from unittest.mock import Mock, patch
+        access = object.__new__(Access)
+        access.scope = {"vault": "public-vault", "tradingAccount": "public-account", "approvalContract": "public-venue"}
+        access.signer = Mock(side_effect=AssertionError("signer must not load"))
+        signal = {"evidence": "verified-public-reads", "pendingRequestCount": "1", "restricted": False}
+        with patch("twon20.withdrawals.poll_pending_withdrawals", return_value=signal) as read, patch("twon20.rpc.Rpc") as rpc:
+            self.assertEqual(access.pending_withdrawals(), signal)
+        read.assert_called_once_with(access.scope, rpc.return_value)
+        access.signer.assert_not_called()
+
+
 if __name__ == "__main__": unittest.main()

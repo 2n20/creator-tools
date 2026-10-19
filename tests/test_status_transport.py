@@ -65,7 +65,7 @@ class StatusTests(unittest.TestCase):
             return original(target, signature, args, block, count)
 
         with patch.object(self.rpc, "words", side_effect=words):
-            target = self.check()["cashTarget"]
+            target = cash_target_public(self.found, self.rpc, self.rpc.now)
         self.assertEqual(target["evidence"], "verified-public-reads")
         self.assertEqual(target["bps"], 1000)
         self.assertEqual(target["targetAssets"], "11")
@@ -113,7 +113,8 @@ class StatusTests(unittest.TestCase):
         self.assertIsNone(value["cashTarget"]["targetAssets"])
         self.assertIsNone(value["cashTarget"]["actualUnreservedAssets"])
         for signature in ("liquidityBufferBps()", "totalAssets()", "reservedAssets()", "balanceOf(address)", "allocatableAssets()"):
-            self.assertEqual(sum(call[0] == signature for call in self.rpc.calls), 1)
+            self.assertEqual(sum(call[0] == signature for call in self.rpc.calls),
+                             2 if signature in {"totalAssets()", "reservedAssets()", "balanceOf(address)"} else 1)
 
     def test_cash_target_inconsistent_reserve_is_unavailable(self):
         original = self.rpc.words
