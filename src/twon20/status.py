@@ -151,8 +151,11 @@ def status(found: Discovery, rpc: Rpc, now: int | None = None, info=None) -> dic
         completed_at = max(now, int(time.time()))
         if completed_at - found.timestamp > 300 or (found.trading_account != ZERO and completed_at - found.book.observed_at > CASH_REPORT_TTL_SECONDS):
             result["cashTarget"] = unavailable_cash_target()
-        if completed_at - found.timestamp > 45 or (found.book.phase == 0 and found.trading_account != ZERO and completed_at - found.book.observed_at > 45):
+        if completed_at - found.timestamp > 45:
             result["pendingWithdrawals"] = unavailable_pending_withdrawals()
+        elif found.trading_account != ZERO and completed_at - found.book.observed_at > 45:
+            result["pendingWithdrawals"]["owedAssets"] = None
+            result["pendingWithdrawals"]["uncoveredAssets"] = None
         return result
 
     reasons = result["reasons"]

@@ -2,7 +2,7 @@
 
 import time
 
-from .discovery import Book, ZERO, block_identity, read_account, word256
+from .discovery import BOOK_WORDS, TRADING_KEY_VERSION, Book, ZERO, block_identity, parse_book, word256
 from .errors import SetupError
 from .rpc import Rpc
 
@@ -25,7 +25,7 @@ def pending_withdrawals_at(rpc: Rpc, vault: str, core: str, book: Book, number: 
         shares = read("balanceOf(address)", [vault])
         reserved = read("reservedAssets()")
         supply = read("totalSupply()")
-        valued = book.phase == 0
+        valued = book.phase == 0 and (core == ZERO or book.priced and now - REPORT_TTL_SECONDS <= book.observed_at <= now + 5)
         total = read("totalAssets()") if valued else 0
         uncovered = read("uncoveredAssets()") if valued else 0
         if shares > supply:
@@ -35,8 +35,8 @@ def pending_withdrawals_at(rpc: Rpc, vault: str, core: str, book: Book, number: 
         canonical = block_identity(canonical_block, completed)
         if canonical != (number, block_hash, timestamp) or completed - timestamp > REPORT_TTL_SECONDS:
             return unavailable_pending_withdrawals()
-        if valued and core != ZERO and (not book.priced or not completed - REPORT_TTL_SECONDS <= book.observed_at <= completed + 5):
-            return unavailable_pending_withdrawals()
+        if valued and core != ZERO and completed - book.observed_at > REPORT_TTL_SECONDS:
+            valued = False
         # A pending operation can change valuation; preserve demand but do not price it.
         owed = (shares * total + supply - 1) // supply if shares else 0
         return {"evidence": "verified-public-reads", "pendingRequestCount": str(count),
@@ -55,7 +55,10 @@ def poll_pending_withdrawals(scope: dict, rpc: Rpc, now: int | None = None) -> d
     try:
         number, block_hash, timestamp = block_identity(rpc.call("eth_getBlockByNumber", ["latest", False]), now)
         fixed = {"blockHash": block_hash, "requireCanonical": True}
-        book, *_ = read_account(rpc, scope["approvalContract"], scope["vault"], scope["tradingAccount"], fixed)
+        venue, vault, core = scope["approvalContract"], scope["vault"], scope["tradingAccount"]
+        if rpc.words(venue, "tradingKeyVersion()", [], fixed, 1) != [TRADING_KEY_VERSION]:
+            return unavailable_pending_withdrawals()
+        book = parse_book(tuple(rpc.words(venue, "books(address)", [vault], fixed, BOOK_WORDS)), core)
         return pending_withdrawals_at(rpc, scope["vault"], scope["tradingAccount"], book,
                                       number, block_hash, timestamp, now)
     except (SetupError, KeyError, IndexError, TypeError, ValueError):

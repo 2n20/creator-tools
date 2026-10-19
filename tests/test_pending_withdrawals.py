@@ -66,12 +66,14 @@ class PendingWithdrawalTests(unittest.TestCase):
     def test_public_poll_exposes_operation_without_valuing_in_flight_assets(self):
         from twon20.withdrawals import poll_pending_withdrawals
         self.rpc.phase = 2
+        self.reads.clear()
         signal = poll_pending_withdrawals({"vault": VAULT, "tradingAccount": CORE,
                                           "approvalContract": self.found.approval_contract}, self.rpc, self.rpc.now)
         self.assertTrue(signal["operationInProgress"])
         self.assertEqual(signal["operationPhase"], 2)
         self.assertIsNone(signal["owedAssets"])
         self.assertEqual(signal["pendingRequestCount"], "1")
+        self.assertNotIn("uncoveredAssets()", [signature for signature, _ in self.reads])
 
     def test_final_canonical_read_time_is_included_in_freshness(self):
         original = self.rpc.call
@@ -105,5 +107,8 @@ class PendingWithdrawalTests(unittest.TestCase):
         from dataclasses import replace
         self.found = replace(self.found, book=replace(self.found.book, priced=False, unpriced=1))
         signal = self.signal()
-        self.assertEqual(signal["evidence"], "unavailable")
+        self.assertEqual(signal["evidence"], "verified-public-reads")
+        self.assertEqual(signal["pendingRequestCount"], "1")
+        self.assertEqual(signal["reservedAssets"], "7")
         self.assertIsNone(signal["owedAssets"])
+        self.assertIsNone(signal["uncoveredAssets"])
