@@ -104,6 +104,7 @@ class FakeRpc:
                   "asset()": int(asset, 16), "operator()": int(self.anchor["venue"]["operator"], 16), "owner()": int(OWNER, 16),
                   "tradingKeyVersion()": self.version, "isVault(address)": self.registered, "coreAccountOf(address)": int(self.core, 16),
                   "usedTradingKeys(address)": int(self.used), "lifecycle()": self.lifecycle, "pendingRequestCount()": self.pending_requests,
+                  "liquidityBufferBps()": 0, "totalAssets()": 0, "reservedAssets()": 0, "balanceOf(address)": 0, "allocatableAssets()": 0,
                   "RELEASE_NOTICE()": self.release_notice, "RELEASE_ROUND()": self.release_round, "uncoveredAssets()": self.uncovered}
         if signature == "venue()":
             return [int(ZERO if self.bad_factory and to == factory else self.bound_venue, 16)]

@@ -3,10 +3,11 @@
 import time
 from decimal import Decimal, InvalidOperation
 
-from .discovery import RELEASE_ROUND_SECONDS, ZERO, Discovery, Key, Book, Release, Strikes, address, block_identity, read_account, verify_current
+from .discovery import RELEASE_ROUND_SECONDS, ZERO, Discovery, Key, Book, Release, Strikes, address, block_identity, read_account, verify_current, word256
 from .errors import SetupError
 from .rpc import INFO_URLS, Rpc, request_json
 
+CASH_REPORT_TTL_SECONDS = 45
 KEY_EXPIRY_WARNING_SECONDS = 14 * 24 * 60 * 60
 FRESH_KEY = "Approve a fresh trading key. A key that was already used cannot be approved again."
 WAIT_FOR_REVOCATION = "A revocation is pending. Wait for it to finish, then approve a fresh trading key. A key that was already used cannot be approved again."
@@ -85,6 +86,45 @@ def poll_lifecycle(scope: dict, rpc: Rpc, now: int | None = None) -> dict:
     return lifecycle_public(book, key, release, strikes, cuts_allowed_at, uncovered, now) | {"blockTimestamp": timestamp}
 
 
+def unavailable_cash_target() -> dict:
+    return {"evidence": "unavailable", "bps": None, "targetAssets": None,
+                   "actualUnreservedAssets": None, "allocatableAssets": None,
+                   "totalAssets": None, "reservedAssets": None}
+
+
+def cash_target_public(found: Discovery, rpc: Rpc, now: int) -> dict:
+    unavailable = unavailable_cash_target()
+    try:
+        if found.timestamp > now + 5 or now - found.timestamp > 300:
+            return unavailable
+        if found.book.phase != 0 or found.trading_account != ZERO and (not found.book.priced or not now - CASH_REPORT_TTL_SECONDS <= found.book.observed_at <= now + 5):
+            return unavailable
+        read = lambda target, signature, args=(): word256(rpc.words(target, signature, list(args), found.fixed, 1)[0])
+        bps = read(found.vault, "liquidityBufferBps()")
+        if bps > 5000:
+            return unavailable
+        total = read(found.vault, "totalAssets()")
+        reserved = read(found.vault, "reservedAssets()")
+        cash = read(address(found.anchor["contracts"]["MockUSDC"]), "balanceOf(address)", [found.vault])
+        if cash < reserved:
+            return unavailable
+        allocatable = read(found.vault, "allocatableAssets()")
+        canonical = rpc.call("eth_getBlockByNumber", [hex(found.block_number), False])
+        completed_at = max(now, int(time.time()))
+        if found.trading_account != ZERO and completed_at - found.book.observed_at > CASH_REPORT_TTL_SECONDS:
+            return unavailable
+        if block_identity(canonical, completed_at) != (found.block_number, found.block_hash, found.timestamp):
+            return unavailable
+        return {"evidence": "verified-public-reads", "bps": bps,
+                "targetAssets": str((total * bps + 9999) // 10000),
+                "actualUnreservedAssets": str(cash - reserved),
+                "allocatableAssets": str(allocatable), "totalAssets": str(total),
+                "reservedAssets": str(reserved), "blockNumber": str(found.block_number),
+                "blockHash": found.block_hash, "blockTimestamp": found.timestamp}
+    except (SetupError, KeyError, IndexError, TypeError, ValueError):
+        return unavailable
+
+
 def decimal(value) -> Decimal:
     if not isinstance(value, str) or len(value) > 100:
         raise SetupError("INVALID_CORE_EVIDENCE", "Hyperliquid returned invalid public funding evidence.")
@@ -102,14 +142,21 @@ def status(found: Discovery, rpc: Rpc, now: int | None = None, info=None) -> dic
     info = info if info is not None else lambda payload: request_json(INFO_URLS[found.network], payload)
     view = lifecycle_public(found.book, found.key, found.release, found.strikes, found.cuts_allowed_at, found.uncovered, now, found.lifecycle != 0)
     result = found.public() | {"tradingAccessReady": False, "strategyConnectionTested": False,
-                              "checkedAt": now, "evidence": "unavailable", "reasons": []} | view
+                              "checkedAt": now, "evidence": "unavailable", "reasons": [],
+                              "cashTarget": cash_target_public(found, rpc, now)} | view
+    def finish() -> dict:
+        completed_at = max(now, int(time.time()))
+        if completed_at - found.timestamp > 300 or (found.trading_account != ZERO and completed_at - found.book.observed_at > CASH_REPORT_TTL_SECONDS):
+            result["cashTarget"] = unavailable_cash_target()
+        return result
+
     reasons = result["reasons"]
     if found.trading_account == ZERO:
         reasons.append("The trading account has not been created yet. Wait for vault funding on Step 2.")
-        return result
+        return finish()
     if found.requested_key == ZERO:
         reasons.append(view["creatorAction"])
-        return result
+        return finish()
     if found.lifecycle != 0 or found.book.phase != 0 or found.revocation_pending:
         reasons.append("The vault has a pending operation, revocation or closed lifecycle.")
     if found.key.confirmed != found.requested_key or found.key.nominator != found.owner or found.key.valid_until <= now:
@@ -168,4 +215,4 @@ def status(found: Discovery, rpc: Rpc, now: int | None = None, info=None) -> dic
         result["tradingAccessReady"] = not reasons
     except (SetupError, KeyError, TypeError, ValueError):
         reasons.append("Public Hyperliquid evidence is unavailable or inconsistent. Readiness is unverified; check again later.")
-    return result
+    return finish()

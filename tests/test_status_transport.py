@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import unittest
 import io
 import json
@@ -8,7 +10,7 @@ from twon20.discovery import discover
 from twon20.errors import SetupError
 from twon20.onboarding import HANDOFF_ERRORS, HANDOFF_TIMEOUT_SECONDS
 from twon20.rpc import Rpc, request_json
-from twon20.status import poll_lifecycle, status
+from twon20.status import cash_target_public, poll_lifecycle, status
 
 from support import CORE, KEY, LINK, OWNER, FakeRpc
 
@@ -49,6 +51,93 @@ class StatusTests(unittest.TestCase):
 
     def check(self, info=None):
         return status(self.found, self.rpc, self.rpc.now, info or self.info)
+
+    def test_cash_target_rounds_up_and_pins_all_reads_to_one_block(self):
+        values = {"liquidityBufferBps()": 1000, "totalAssets()": 101,
+                  "reservedAssets()": 20, "balanceOf(address)": 26, "allocatableAssets()": 0}
+        original = self.rpc.words
+        reads = []
+
+        def words(target, signature, args, block, count):
+            if signature in values:
+                reads.append((target, signature, args, block))
+                return [values[signature]]
+            return original(target, signature, args, block, count)
+
+        with patch.object(self.rpc, "words", side_effect=words):
+            target = self.check()["cashTarget"]
+        self.assertEqual(target["evidence"], "verified-public-reads")
+        self.assertEqual(target["bps"], 1000)
+        self.assertEqual(target["targetAssets"], "11")
+        self.assertEqual(target["actualUnreservedAssets"], "6")
+        self.assertEqual(target["allocatableAssets"], "0")
+        self.assertEqual(target["blockHash"], self.found.block_hash)
+        self.assertEqual(len(reads), 5)
+        self.assertTrue(all(read[3] == self.found.fixed for read in reads))
+        balance = next(read for read in reads if read[1] == "balanceOf(address)")
+        self.assertEqual(balance[0], self.found.anchor["contracts"]["MockUSDC"].lower())
+        self.assertEqual(balance[2], [self.found.vault])
+
+    def test_cash_target_missing_evidence_is_null_without_blocking_setup(self):
+        for signature in ("liquidityBufferBps()", "totalAssets()", "reservedAssets()", "balanceOf(address)", "allocatableAssets()"):
+            with self.subTest(signature=signature):
+                self.rpc.fail = signature
+                value = self.check()
+                self.assertTrue(value["tradingAccessReady"])
+                self.assertEqual(value["cashTarget"]["evidence"], "unavailable")
+                self.assertIsNone(value["cashTarget"]["targetAssets"])
+                self.assertIsNone(value["cashTarget"]["actualUnreservedAssets"])
+
+    def test_cash_target_rejects_stale_unpriced_pending_or_reorganized_evidence(self):
+        for found in (replace(self.found, timestamp=self.rpc.now - 301),
+                      replace(self.found, book=replace(self.found.book, observed_at=self.rpc.now - 46)),
+                      replace(self.found, book=replace(self.found.book, priced=False)),
+                      replace(self.found, book=replace(self.found.book, phase=1))):
+            self.assertEqual(cash_target_public(found, self.rpc, self.rpc.now)["evidence"], "unavailable")
+        self.rpc.reorg = True
+        self.assertEqual(cash_target_public(self.found, self.rpc, self.rpc.now)["evidence"], "unavailable")
+
+    def test_cash_target_expiring_during_reads_is_unavailable(self):
+        with patch("twon20.status.time.time", return_value=self.rpc.now + 46):
+            self.assertEqual(cash_target_public(self.found, self.rpc, self.rpc.now)["evidence"], "unavailable")
+
+    def test_cash_target_expires_during_later_hyperliquid_reads(self):
+        self.found = replace(self.found, book=replace(self.found.book, observed_at=self.rpc.now - 44))
+        with patch("twon20.status.time.time", return_value=self.rpc.now) as clock:
+            def slow_info(payload):
+                clock.return_value = self.rpc.now + 2
+                return self.info(payload)
+
+            value = self.check(slow_info)
+        self.assertEqual(value["cashTarget"]["evidence"], "unavailable")
+        self.assertIsNone(value["cashTarget"]["targetAssets"])
+        self.assertIsNone(value["cashTarget"]["actualUnreservedAssets"])
+        for signature in ("liquidityBufferBps()", "totalAssets()", "reservedAssets()", "balanceOf(address)", "allocatableAssets()"):
+            self.assertEqual(sum(call[0] == signature for call in self.rpc.calls), 1)
+
+    def test_cash_target_inconsistent_reserve_is_unavailable(self):
+        original = self.rpc.words
+        values = {"reservedAssets()": 21, "balanceOf(address)": 20}
+        with patch.object(self.rpc, "words", side_effect=lambda target, sig, args, block, count: [values[sig]] if sig in values else original(target, sig, args, block, count)):
+            value = self.check()
+        self.assertTrue(value["tradingAccessReady"])
+        self.assertEqual(value["cashTarget"]["evidence"], "unavailable")
+        self.assertIsNone(value["cashTarget"]["actualUnreservedAssets"])
+
+    def test_cash_target_before_account_creation_needs_no_core_report(self):
+        found = replace(self.found, trading_account="0x" + "0" * 40,
+                        book=replace(self.found.book, priced=False, observed_at=0, report_nonce=0))
+        self.assertEqual(cash_target_public(found, self.rpc, self.rpc.now)["evidence"], "verified-public-reads")
+
+    def test_cash_target_zero_maximum_and_fully_reserved_cash(self):
+        original = self.rpc.words
+        for bps, expected in ((0, "0"), (5000, "51"), (5001, None)):
+            values = {"liquidityBufferBps()": bps, "totalAssets()": 101,
+                      "reservedAssets()": 20, "balanceOf(address)": 20}
+            with patch.object(self.rpc, "words", side_effect=lambda target, sig, args, block, count: [values[sig]] if sig in values else original(target, sig, args, block, count)):
+                target = cash_target_public(self.found, self.rpc, self.rpc.now)
+            self.assertEqual(target["targetAssets"], expected)
+            self.assertEqual(target["actualUnreservedAssets"], "0" if bps <= 5000 else None)
 
     def test_read_only_ready_with_current_approval_and_funding(self):
         value = self.check()
