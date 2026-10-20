@@ -112,3 +112,28 @@ class PendingWithdrawalTests(unittest.TestCase):
         self.assertEqual(signal["reservedAssets"], "7")
         self.assertIsNone(signal["owedAssets"])
         self.assertIsNone(signal["uncoveredAssets"])
+
+    def test_remaining_capital_does_not_subtract_reserved_assets_twice(self):
+        from twon20.withdrawals import withdrawal_policy
+        signal = self.signal()
+        self.assertEqual(signal["totalAssets"], "101")
+        self.assertEqual(signal["remainingAssets"], "70")
+        policy = withdrawal_policy(signal, self.rpc.now)
+        self.assertEqual(str(policy.capital.remaining_usdc), "0.00007")
+        self.assertEqual(policy.state, "yielding")
+        self.assertFalse(policy.ready_to_increase)
+        self.values.update({"pendingRequestCount()": 0, "balanceOf(address)": 0})
+        policy = withdrawal_policy(self.signal(), self.rpc.now)
+        self.assertEqual(str(policy.capital.remaining_usdc), "0.000101")
+        self.assertTrue(policy.ready_to_increase)
+
+    def test_policy_unavailable_and_operation_never_enable_increases(self):
+        from twon20.withdrawals import withdrawal_policy
+        signal = self.signal()
+        self.assertEqual(withdrawal_policy(signal, self.rpc.now + 20).state, "unavailable")
+        self.assertEqual(withdrawal_policy({}, self.rpc.now).capital.remaining_usdc, None)
+        signal.update(operationInProgress=True, totalAssets=None, remainingAssets=None)
+        policy = withdrawal_policy(signal, self.rpc.now)
+        self.assertEqual(policy.state, "yielding")
+        self.assertFalse(policy.ready_to_increase)
+        self.assertIsNone(policy.capital.remaining_usdc)

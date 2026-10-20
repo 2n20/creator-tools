@@ -120,6 +120,14 @@ class LimitChaser:
             self.report("blocked", self.state["active"], {"reason": code})
             self.commit()
 
+    def _record_external(self, value):
+        # Called only after all own-child regression/coverage checks succeed.
+        # The ledger and resulting position are committed together below.
+        self.state.setdefault("externalReductions", []).extend(value["externalReductions"])
+        self.report("external_risk_reduction_observed", self.state["active"],
+                    {"externalDelta": value["externalDelta"], "externalFills": value["externalReductions"],
+                     "attribution": "Public fills prove risk reduction, not the submitting caller."})
+
     def _collect(self, now_ms):
         if self.job is None:
             return
@@ -159,12 +167,18 @@ class LimitChaser:
             return
         self.snapshot, self.observed_ms = value["snapshot"], now_ms
         evidence = value["evidence"]
+        external = value.get("externalReductions", [])
         if child is None:
+            if external:
+                self.state["position"] = value["position"]
+                self._record_external(value)
             if number(value["position"], signed=True) != number(self.state["position"], signed=True):
                 self._blocked("OWNERSHIP_CONFLICT")
                 self.snapshot = None
             else:
                 self.state["error"] = None
+            if external:
+                self.commit()
             return
         if not evidence["known"]:
             self._blocked("CHILD_SUBMISSION_UNRESOLVED")
@@ -196,6 +210,8 @@ class LimitChaser:
             return
         if evidence["complete"]:
             self.state["position"] = value["position"]
+            if external:
+                self._record_external(value)
             self.state["filledSize"] = str(number(self.state["filledSize"]) + filled)
             self.state["filledValue"] = str(number(self.state["filledValue"]) + number(evidence["value"]))
             self.state["fees"] = str(number(self.state["fees"], signed=True) + number(evidence["fees"], signed=True))
@@ -233,6 +249,8 @@ class LimitChaser:
                             or not self.admission.feed_check() or state["pending"] is not None
                             or now_ms >= active["deadlineMs"] or now_ms - child["startedMs"] >= self.limits["requoteSeconds"] * 1000
                             or self.open_risk_paused and not child["plan"]["reduceOnly"])
+            if self.open_risk_paused and child["plan"]["reduceOnly"] and not self.admission.stopping.is_set():
+                needs_cancel = False
             if needs_cancel and child.get("oid") is not None and child["phase"] in {"child_open", "evidence_pending"} and not child.get("terminal") and not child.get("cancelAwaitingEvidence"):
                 child["phase"] = "cancel_uncertain"
                 child["cancelAwaitingEvidence"] = True
@@ -254,17 +272,17 @@ class LimitChaser:
             self.commit()
         if self.admission.stopping.is_set():
             return
-        if now_ms >= active["deadlineMs"]:
-            if state["phase"] != "expired":
-                state["phase"] = "expired"
-                self.report("expired", active)
-                self.commit()
-            return
         if not self.admission.feed_ready.is_set() or not self.admission.feed_check():
             return
         if self.snapshot is None or now_ms - self.observed_ms > 1000:
             if now_ms >= self.next_read:
                 self._read(now_ms)
+            return
+        if now_ms >= active["deadlineMs"]:
+            if state["phase"] != "expired":
+                state["phase"] = "expired"
+                self.report("expired", active)
+                self.commit()
             return
         if number(state["position"], signed=True) == number(active["quantity"], signed=True):
             if state["phase"] != "target_reached":

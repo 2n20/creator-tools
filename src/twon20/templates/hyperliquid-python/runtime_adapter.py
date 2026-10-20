@@ -54,6 +54,9 @@ class RuntimeAdapter(Adapter):
             raise Stop("ACCOUNT_ACTIVITY_UNVERIFIED", "The session activity scan reached its bound. Preserve the reservation for review.")
         seen, matching, filled, value, fees = set(), [], Decimal(0), Decimal(0), Decimal(0)
         maker, taker = 0, 0
+        external = []
+        retained_external = {tuple(row["identity"]): row for row in state.get("externalReductions", [])}
+        retained_seen = set()
         try:
             for fill in fills:
                 if not isinstance(fill, dict) or type(fill.get("oid")) is not int or type(fill.get("tid")) is not int or type(fill.get("time")) is not int:
@@ -63,7 +66,19 @@ class RuntimeAdapter(Adapter):
                     raise ValueError()
                 seen.add(identity)
                 if fill["oid"] not in allowed:
-                    raise Stop("ACCOUNT_ACTIVITY_CONFLICT", "An unowned order filled during this runtime. It remains untouched.")
+                    row = {"identity": list(identity), "startPosition": str(number(fill.get("startPosition"), signed=True)),
+                           "size": str(number(fill["sz"])), "side": fill.get("side"), "coin": fill.get("coin")}
+                    if identity in retained_external:
+                        if row != retained_external[identity]:
+                            raise ValueError()
+                        retained_seen.add(identity)
+                    else:
+                        epoch = state.get("settlementEpoch")
+                        if (not epoch or not epoch["sinceMs"] - 5000 <= fill["time"] <= epoch["throughMs"]
+                                or fill.get("coin") != market or fill.get("side") not in {"A", "B"}):
+                            raise Stop("ACCOUNT_ACTIVITY_CONFLICT", "Unexplained external activity requires review; no foreign order is touched.")
+                        external.append(row)
+                    continue
                 if order is None or fill["oid"] != order["oid"]:
                     continue
                 plan = child["plan"]
@@ -89,6 +104,8 @@ class RuntimeAdapter(Adapter):
                 raise ValueError()
         except (KeyError, TypeError, ValueError):
             raise Stop("FILL_EVIDENCE_INVALID", "Complete bounded fill identity, quantities or prices could not be verified.") from None
+        if retained_seen != set(retained_external) or len(retained_external) + len(external) > 256:
+            raise Stop("ACCOUNT_ACTIVITY_UNVERIFIED", "Complete retained external fill coverage is required.")
         # Snapshot runs after the fills read, so a late fill produces a mismatch
         # and another read, never optimistic retirement or replacement.
         snapshot = self.snapshot(market)
@@ -103,7 +120,22 @@ class RuntimeAdapter(Adapter):
         expected = number(state["position"], signed=True)
         if child:
             expected = number(child["basePosition"], signed=True) + filled * (1 if child["plan"]["buy"] else -1)
-        consistent = position == expected
+        external_delta = Decimal(0)
+        external_pending = bool(external and child and order and detail.get("status") not in TERMINAL)
+        if external and not external_pending:
+            # Ambiguous/partial own children cannot establish an ordering boundary.
+            if child and (not order or detail.get("status") not in TERMINAL):
+                raise Stop("EXTERNAL_REDUCTION_UNRESOLVED", "Resolve the exact own child before reconciling an external reduction.")
+            for row in sorted(external, key=lambda item: (item["identity"][2], item["identity"][1])):
+                start, size = number(row["startPosition"], signed=True), number(row["size"])
+                delta = size if row["side"] == "B" else -size
+                post = start + delta
+                if (start != expected or size <= 0 or start == 0 or delta * start >= 0
+                        or post * start < 0 or abs(post) >= abs(start)):
+                    raise Stop("ACCOUNT_ACTIVITY_CONFLICT", "External fills do not prove a strict reduction of verified exposure.")
+                expected = post
+                external_delta += delta
+        consistent = position == expected and not external_pending
         evidence = {"known": order is not None, "terminal": False, "complete": False,
                     "filled": str(filled), "value": str(value), "fees": str(fees),
                     "maker": maker, "taker": taker, "fills": matching, "consistent": consistent}
@@ -120,7 +152,21 @@ class RuntimeAdapter(Adapter):
             evidence.update(terminal=terminal, complete=terminal and covered and consistent and order["oid"] not in open_ids)
         elif not child and not consistent:
             raise Stop("OWNERSHIP_CONFLICT", "Current position differs from confirmed runtime-owned exposure.")
-        return {"snapshot": snapshot, "evidence": evidence, "position": str(position)}
+        if external and not external_pending and not consistent:
+            raise Stop("EXTERNAL_REDUCTION_UNRESOLVED", "External fill coverage and current exposure disagree.")
+        return {"snapshot": snapshot, "evidence": evidence, "position": str(position),
+                "externalReductions": [] if external_pending else external, "externalDelta": str(external_delta)}
+
+    def _withdrawal_check(self, plan, intent):
+        from twon20.withdrawals import withdrawal_policy
+        policy = withdrawal_policy(self.access.pending_withdrawals())
+        if plan["reduceOnly"]:
+            return
+        if not policy.ready_to_increase:
+            raise Stop("WITHDRAWAL_HOLD", "Fresh withdrawal policy forbids increasing risk.")
+        cap = min(number(intent["targetNotional"]), policy.capital.remaining_usdc * number(intent["capitalMultiple"]))
+        if abs(number(intent["quantity"], signed=True)) * number(intent["arrivalPrice"]) > cap * abs(number(intent["fraction"], signed=True)):
+            raise Stop("CAPITAL_CHANGED", "Fresh remaining capital requires rebasing the retained target.")
 
     def _preflight(self, plan, state, intent, admission):
         admission.check(intent["id"], intent["deadlineMs"])
@@ -158,6 +204,7 @@ class RuntimeAdapter(Adapter):
             raise Stop("CHILD_BOUND_CHANGED", "The child exceeds its fixed price/notional bound or venue minimum.")
         if not reducing and (current["taker_fee"] > Decimal("0.001") or current["perp_available"] < exposure * (1 + 2 * current["taker_fee"]) + Decimal("0.05")):
             raise Stop("PERP_COLLATERAL_REQUIRED", "Fresh perpetual collateral cannot fund this bounded child.")
+        self._withdrawal_check(plan, intent)
         admission.check(intent["id"], intent["deadlineMs"])
 
     def submit_child(self, child, state, intent, admission):
@@ -166,6 +213,7 @@ class RuntimeAdapter(Adapter):
         try:
             admission.check(intent["id"], intent["deadlineMs"])
             exchange = self.exchange(intent["deadlineMs"], before_sign=lambda: self._preflight(plan, state, intent, admission))
+            self._withdrawal_check(plan, intent)
             admission.check(intent["id"], intent["deadlineMs"])
         except Stop as error:
             return {"classification": "not_submitted", "reason": error.code}

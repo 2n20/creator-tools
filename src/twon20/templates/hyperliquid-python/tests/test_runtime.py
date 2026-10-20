@@ -46,7 +46,7 @@ def snapshot(position="0"):
 
 def intent(identity="one", fraction="1", quantity="1", now=1000):
     return {"id": identity, "fraction": fraction, "quantity": quantity, "arrivalPrice": "100", "createdMs": now,
-            "deadlineMs": now + 60000, "market": "BTC", "sourceBar": 0, "policy": "test", "reason": "test"}
+            "capitalMultiple": "1", "targetNotional": "1000", "deadlineMs": now + 60000, "market": "BTC", "sourceBar": 0, "policy": "test", "reason": "test"}
 
 
 class MemoryJournal:
@@ -754,9 +754,8 @@ class SessionRecoveryTests(unittest.TestCase):
 
 class ReleasePauseTests(unittest.TestCase):
     def view(self, restricted, now, age=0):
-        return {"release": {"active": restricted, "noticeAt": 0, "roundSeconds": 600, "openedThisRound": False,
-                            "misses": 0, "lastMissAt": 0, "cutsAllowedAt": 0},
-                "pricing": {"priced": True, "unpriced": 0, "reasons": [], "action": "priced"},
+        return {"evidence": "verified-public-reads", "pendingRequestCount": "0", "escrowedShares": "0",
+                "totalAssets": "1000000000", "remainingAssets": "1000000000", "operationInProgress": False,
                 "restricted": restricted, "blockTimestamp": now - age}
 
     def adapter(self):
@@ -804,14 +803,14 @@ class ReleasePauseTests(unittest.TestCase):
         self.ticks(runtime, 6)
         self.assertEqual(runtime.executor.open_risk_paused, True)
         self.assertEqual(runtime.state["execution"]["phase"], "release_hold")
-        self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": 1_000_000})
+        self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": True, "observedMs": 1_000_000})
         self.assertEqual(adapter.calls, [])
         self.assertEqual(adapter.transfers, [])
         current["restricted"] = False
         runtime.clock_box["ms"] = 1_005_000
         self.ticks(runtime, 4)
         self.assertEqual(runtime.executor.open_risk_paused, False)
-        self.assertEqual(runtime.state["release"], {"paused": False, "observedMs": 1_005_000})
+        self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": False, "observedMs": 1_005_000})
         submits = self.calls(adapter, "submit")
         self.assertEqual(len(submits), 1)
         self.assertEqual(submits[0][1]["plan"]["reduceOnly"], False)
@@ -835,7 +834,7 @@ class ReleasePauseTests(unittest.TestCase):
         self.ticks(runtime, 2)
         self.assertEqual(reads, [1000, 1005])
         self.assertEqual(runtime.executor.open_risk_paused, True)
-        self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": None})
+        self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": True, "observedMs": None})
         self.assertEqual(self.calls(adapter, "cancel"), [("cancel", child["oid"])])
         self.assertEqual(len(self.calls(adapter, "submit")), 1)
         self.assertEqual(adapter.transfers, [])
@@ -857,13 +856,13 @@ class ReleasePauseTests(unittest.TestCase):
                 self.settle(runtime, lambda: len(reads) == count and worker.idle)
                 if count < 3:
                     self.assertEqual(runtime.executor.open_risk_paused, True)
-                    self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": None})
+                    self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": True, "observedMs": None})
                     self.assertEqual(runtime.state["execution"]["phase"], "release_hold")
                     self.assertEqual(adapter.calls, [])
             self.ticks(runtime, 4)
             self.assertEqual(reads, [1000, 1005, 1010])
             self.assertEqual(runtime.executor.open_risk_paused, False)
-            self.assertEqual(runtime.state["release"], {"paused": False, "observedMs": 1_010_000})
+            self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": False, "observedMs": 1_010_000})
             submits = self.calls(adapter, "submit")
             self.assertEqual(len(submits), 1)
             self.assertFalse(submits[0][1]["plan"]["reduceOnly"])
@@ -878,14 +877,14 @@ class ReleasePauseTests(unittest.TestCase):
         runtime = self.runtime(adapter, lambda now: self.view(False, now, age["seconds"]))
         self.ticks(runtime, 6)
         self.assertEqual(runtime.executor.open_risk_paused, True)
-        self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": 980_000})
+        self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": True, "observedMs": None})
         self.assertEqual(runtime.state["execution"]["phase"], "release_hold")
         self.assertEqual(adapter.calls, [])
         age["seconds"] = 14
         runtime.clock_box["ms"] = 1_005_000
         self.ticks(runtime, 4)
         self.assertEqual(runtime.executor.open_risk_paused, False)
-        self.assertEqual(runtime.state["release"], {"paused": False, "observedMs": 991_000})
+        self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": False, "observedMs": 991_000})
         self.assertEqual(len(self.calls(adapter, "submit")), 1)
 
     def test_a_blocked_read_does_not_delay_the_loop_and_pauses_new_risk_at_20_seconds(self):
@@ -917,7 +916,7 @@ class ReleasePauseTests(unittest.TestCase):
                 self.assertEqual(runtime.executor.open_risk_paused, paused)
             self.ticks(runtime, 2)
             self.assertLess(time.monotonic() - started, 1)
-            self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": 1_000_000})
+            self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": True, "observedMs": None})
             self.assertEqual(self.calls(adapter, "cancel"), [("cancel", child["oid"])])
             self.assertEqual(len(self.calls(adapter, "submit")), 1)
             self.assertEqual(reads, [1000, 1005])
@@ -951,8 +950,8 @@ class ReleasePauseTests(unittest.TestCase):
             runtime.clock_box["ms"] += 5_000
             runtime.tick()
             self.assertEqual(reads, [1000])
-            self.assertEqual(runtime.state["release"], {"paused": True, "observedMs": None})
-            self.assertEqual(worker.take("release-read"), (True, {"observedMs": 1_000_000, "restricted": False}))
+            self.assertEqual({key: runtime.state["release"][key] for key in ("paused", "observedMs")}, {"paused": True, "observedMs": None})
+            self.assertEqual(worker.take("release-read"), (True, self.view(False, 1000)))
         finally:
             unblock.set()
             worker.close()
@@ -982,7 +981,7 @@ class ReleasePauseTests(unittest.TestCase):
 
         def poll(scope, rpc, now):
             return rpc.call("eth_getBlockByNumber", ["latest", False])
-        with patch("twon20.status.poll_lifecycle", poll), patch("twon20.rpc.request_json", side_effect=unavailable), \
+        with patch("twon20.withdrawals.poll_pending_withdrawals", poll), patch("twon20.rpc.request_json", side_effect=unavailable), \
                 patch("twon20.rpc.time.monotonic", side_effect=lambda: clock[0]), patch("twon20.rpc.time.sleep"):
             read = release_reader({"approvalContract": "0x" + "1" * 40, "vault": "0x" + "2" * 40, "tradingAccount": "0x" + "3" * 40})
             for _ in range(2):

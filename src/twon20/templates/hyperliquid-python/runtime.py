@@ -9,12 +9,13 @@ import time
 from configuration import load_config
 from executor import LimitChaser, PaperExecutor, execution_state
 from feed import FixtureFeed, HyperliquidCandleFeed
-from models import Bar, INTERVALS, validate_market
+from models import Bar, INTERVALS, Target, validate_market
 from reporting import ConsoleReporter, TelegramReporter
 from risk import Stop, number
 from runtime_io import Admission, SerialIO
 from runtime_journal import MAX_HISTORY, MAX_REPORTS, RuntimeJournal
 from strategy import BandBreakout
+from twon20.withdrawals import withdrawal_policy
 
 RELEASE_POLL_MS = 5000
 # New risk waits for a release read of a block at most 20 s old. Reads start every
@@ -107,6 +108,7 @@ class Runtime:
         self.batch_offset = 0
         self.commit()
         self.executor.recover()
+        self.executor.open_risk_paused = lifecycle is not None
         self.release_worker = (release_worker or SerialIO()) if lifecycle else None
         if recover_only:
             self.stop()
@@ -139,20 +141,41 @@ class Runtime:
         self.state["reports"] = self.state["reports"][-MAX_REPORTS:]
 
     def nominate(self, target, bar, now_ms):
-        normalized = str(target.fraction.normalize())
-        if self.state["normalized"] == normalized:
+        self.state["latestTarget"] = {"fraction": str(target.fraction), "reason": target.reason, "bar": bar.public(), "createdMs": now_ms}
+        budget = number(self.config["execution"]["targetNotional"])
+        ready_to_increase = self.lifecycle is None
+        if self.lifecycle is not None:
+            policy = withdrawal_policy(self.release_read or {}, self.clock() // 1000)
+            ready_to_increase = policy.ready_to_increase
+            if policy.capital.remaining_usdc is None:
+                if target.fraction != 0:
+                    return
+            else:
+                budget = min(budget, policy.capital.remaining_usdc * number(self.config["execution"]["capitalMultiple"]))
+            if not policy.ready_to_increase:
+                desired = budget * target.fraction / bar.close
+                current = number(self.state["execution"]["position"], signed=True)
+                if desired != 0 and (current == 0 or desired * current < 0 or abs(desired) >= abs(current)):
+                    return
+        fraction = str(target.fraction.normalize())
+        normalized = fraction + ":" + str(budget.normalize())
+        if self.state["normalized"] == normalized and (not ready_to_increase or self.state.get("readyNormalized") == normalized):
             return
+        if ready_to_increase:
+            self.state["readyNormalized"] = normalized
         state = self.state["execution"]
         active = state["active"]
-        if active and active["fraction"] == normalized:
+        size = budget * abs(target.fraction) / bar.close
+        quantity = str(size if target.fraction >= 0 else -size)
+        if active and active["fraction"] == fraction and active["quantity"] == quantity and self.clock() < active["deadlineMs"]:
             state["pending"] = None
             self.admission.generation = active["id"]
             self.state["normalized"] = normalized
             return
-        size = number(self.config["execution"]["targetNotional"]) * abs(target.fraction) / bar.close
         self.state["decisionSequence"] += 1
         identity = hashlib.sha256((self.policy + ":" + str(bar.open_ms) + ":" + str(self.state["decisionSequence"])).encode()).hexdigest()[:32]
-        intent = {"id": identity, "fraction": normalized, "quantity": str(size if target.fraction >= 0 else -size),
+        intent = {"id": identity, "fraction": fraction, "quantity": quantity,
+                  "capitalMultiple": self.config["execution"]["capitalMultiple"], "targetNotional": self.config["execution"]["targetNotional"],
                   "arrivalPrice": str(bar.close), "createdMs": now_ms,
                   "deadlineMs": now_ms + self.config["execution"]["chaseSeconds"] * 1000,
                   "market": bar.market, "sourceBar": bar.open_ms, "policy": self.policy,
@@ -226,18 +249,51 @@ class Runtime:
         due = self.release_started is None or not 0 <= now_ms - self.release_started < RELEASE_POLL_MS
         if due and self.release_worker.submit("release-read", lambda: self.read_release(now_ms)):
             self.release_started = now_ms
-        read = self.release_read
-        paused = read is None or read["restricted"] or not 0 <= now_ms - read["observedMs"] < RELEASE_STALE_MS
+        read = self.release_read or {}
+        policy = withdrawal_policy(read, now_ms // 1000)
+        paused = not policy.ready_to_increase
         self.executor.open_risk_paused = paused
-        entry = {"paused": paused, "observedMs": read["observedMs"] if read else None}
-        if self.state.get("release") != entry:
-            self.state["release"] = entry
+        execution = self.state["execution"]
+        before = copy.deepcopy((self.state.get("release"), execution, self.state["reportSequence"], self.state["decisionSequence"], self.state["normalized"], self.state.get("readyNormalized")))
+        previous = self.state.get("release", {})
+        hold_since = previous.get("holdSinceMs") if paused else None
+        if paused and hold_since is None:
+            hold_since = now_ms
+        attention = bool(previous.get("attentionReported")) if paused else False
+        if paused and now_ms - hold_since >= 120000 and not attention:
+            self.report("withdrawal_attention", execution["active"], {"reason": policy.reason})
+            attention = True
+        if policy.state == "yielding":
+            epoch = execution.get("settlementEpoch", {})
+            since = epoch.get("sinceMs", now_ms) if now_ms <= epoch.get("throughMs", now_ms) else now_ms
+            execution["settlementEpoch"] = {"sinceMs": since, "throughMs": policy.observed_at * 1000 + RELEASE_STALE_MS}
+        entry = {"paused": paused, "observedMs": policy.observed_at * 1000 if policy.observed_at else None,
+                 "holdSinceMs": hold_since, "attentionReported": attention, "reason": policy.reason,
+                 "signal": read}
+        # Rebase the existing intent without extending its authorization or
+        # resetting child counts. A fresh signal remains separately retained.
+        if policy.capital.remaining_usdc is not None:
+            budget = min(number(self.config["execution"]["targetNotional"]),
+                         policy.capital.remaining_usdc * number(self.config["execution"]["capitalMultiple"]))
+            for key in ("active", "pending"):
+                intent = execution[key]
+                if intent:
+                    intent["quantity"] = str(budget * number(intent["fraction"], signed=True) / number(intent["arrivalPrice"]))
+                    intent["capitalMultiple"] = self.config["execution"]["capitalMultiple"]
+                    intent["targetNotional"] = self.config["execution"]["targetNotional"]
+        self.state["release"] = entry
+        latest = self.state.get("latestTarget")
+        if (policy.ready_to_increase and latest
+                and latest["createdMs"] + self.config["execution"]["chaseSeconds"] * 1000 > now_ms):
+            self.nominate(Target(number(latest["fraction"], signed=True), latest["reason"]),
+                          Bar.parse(latest["bar"], self.config["market"], self.config["interval"]), latest["createdMs"])
+        after = (self.state["release"], execution, self.state["reportSequence"], self.state["decisionSequence"], self.state["normalized"], self.state.get("readyNormalized"))
+        if before != after:
             self.commit()
 
     def read_release(self, started_ms):
         """Runs on the release worker and touches no runtime state."""
-        view = self.lifecycle(started_ms // 1000)
-        return {"observedMs": min(started_ms, view["blockTimestamp"] * 1000), "restricted": bool(view["restricted"])}
+        return self.lifecycle(started_ms // 1000)
 
     def stop(self):
         self.admission.stopping.set()
@@ -340,8 +396,8 @@ def release_reader(scope):
     next one's. The CLI's commands keep one Rpc, and one allowance, per run.
     """
     from twon20.rpc import Rpc
-    from twon20.status import poll_lifecycle
-    return lambda now: poll_lifecycle(scope, Rpc("mainnet"), now)
+    from twon20.withdrawals import poll_pending_withdrawals
+    return lambda now: poll_pending_withdrawals(scope, Rpc("mainnet"), now)
 
 
 def run_command(args):

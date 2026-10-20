@@ -23,7 +23,7 @@ def load_config(path):
             raise ValueError()
         config = json.loads(raw)
         required = {"schema", "market", "interval", "strategy", "execution", "reporting"}
-        if set(config) != required or config["schema"] != "2n20-runtime-config-v2":
+        if set(config) != required or config["schema"] != "2n20-runtime-config-v3":
             raise ValueError()
         if not re.fullmatch(r"[A-Z][A-Z0-9]{0,19}", config["market"]) or config["interval"] not in INTERVALS:
             raise ValueError()
@@ -31,9 +31,11 @@ def load_config(path):
             raise ValueError()
         BandBreakout(**config["strategy"])
         limits = config["execution"]
-        if set(limits) != {"targetNotional", "childNotional", "slippageBps", "chaseSeconds", "maxChildren", "requoteSeconds", "iocAfterSeconds", "depthFraction", "dailyVolumeFraction"}:
+        if set(limits) != {"capitalMultiple", "targetNotional", "childNotional", "slippageBps", "chaseSeconds", "maxChildren", "requoteSeconds", "iocAfterSeconds", "depthFraction", "dailyVolumeFraction"}:
             raise ValueError()
         if not 0 < number(limits["childNotional"]) <= number(limits["targetNotional"]) <= 1_000_000:
+            raise ValueError()
+        if not 0 < number(limits["capitalMultiple"]) <= 100:
             raise ValueError()
         for key in ("depthFraction", "dailyVolumeFraction"):
             if limits[key] is not None and not 0 < number(limits[key]) <= 1:

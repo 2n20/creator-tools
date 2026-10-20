@@ -22,6 +22,9 @@ class SubmissionTimingTests(unittest.TestCase):
         self.venue.info.attach_mock(Mock(return_value={"universe": [], "tokens": []}), "spot_meta")
         self.access = SimpleNamespace(scope={"tradingAccount": "disposable"},
                                       verify=Mock(side_effect=self.authority), signer=Mock(return_value=object()))
+        self.access.pending_withdrawals = lambda: {"evidence": "verified-public-reads", "blockTimestamp": self.now // 1000,
+            "pendingRequestCount": "0", "escrowedShares": "0", "totalAssets": "10000000000", "remainingAssets": "10000000000",
+            "restricted": False, "operationInProgress": False}
         self.adapter = RuntimeAdapter(self.access, self.venue.info)
         self.target = {**intent(), "arrivalPrice": "110"}
         self.state = execution_state(self.now)
@@ -121,3 +124,30 @@ class SubmissionTimingTests(unittest.TestCase):
             self.adapter.exchange()
         self.access.signer.assert_not_called()
         self.factory.assert_not_called()
+
+    def test_pending_demand_after_signer_load_blocks_final_order_call(self):
+        ready = self.access.pending_withdrawals
+        reads = []
+        def policy():
+            value = ready()
+            reads.append(value)
+            if len(reads) == 2:
+                value["pendingRequestCount"] = "1"
+            return value
+        self.access.pending_withdrawals = policy
+        self.assertEqual(self.submit(), {"classification": "not_submitted", "reason": "WITHDRAWAL_HOLD"})
+        self.access.signer.assert_called_once()
+        self.sdk.order.assert_not_called()
+
+    def test_remaining_capital_shrink_at_final_order_boundary_blocks_old_target(self):
+        ready = self.access.pending_withdrawals
+        reads = []
+        def policy():
+            value = ready()
+            reads.append(value)
+            if len(reads) == 2:
+                value["remainingAssets"] = "1000000"
+            return value
+        self.access.pending_withdrawals = policy
+        self.assertEqual(self.submit(), {"classification": "not_submitted", "reason": "CAPITAL_CHANGED"})
+        self.sdk.order.assert_not_called()

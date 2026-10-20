@@ -119,6 +119,9 @@ class StarterAcceptancePathTests(unittest.TestCase):
         self.venue = FictionalVenue(lambda: self.now, lambda: self.journal.read_runtime())
         self.access = SimpleNamespace(scope=self.scope, verify=Mock(),
                                       signer=Mock(side_effect=AssertionError("No signer may be loaded")))
+        self.access.pending_withdrawals = lambda: {"evidence": "verified-public-reads", "blockTimestamp": self.now // 1000,
+            "pendingRequestCount": "0", "escrowedShares": "0", "totalAssets": "10000000000", "remainingAssets": "10000000000",
+            "restricted": False, "operationInProgress": False}
         self.adapter = RuntimeAdapter(self.access, self.venue.info)
         self.adapter.exchange = Mock(side_effect=self.exchange_boundary)
         self.workers = []
