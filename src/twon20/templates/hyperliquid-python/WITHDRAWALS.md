@@ -62,3 +62,7 @@ For an existing generated project, compare the new template against your code an
 This coordination works only when the trading client follows it. Direct Hyperliquid API clients can bypass the policy and spend collateral that settlement needs. A request can also arrive after the last check, or an already accepted order can execute later. The SDK cannot make two separate HyperCore actions atomic.
 
 Continuing to process signals does not mean every risk-increasing trade executes during a withdrawal. Thin books, loss of value, venue outages, unsupported account state and insufficient order capacity can still delay payout. The runner does not promise a withdrawal deadline, uninterrupted execution or identical backtest returns. Ordinary withdrawals retain the creator's trading key and require no new approval.
+
+## Withdrawal mode
+
+New vaults default to Proportional. The creator selects Proportional or Margin-first during creation; the choice is recorded on-chain. The owner can change it later while the vault is open and idle with no pending requests. Proportional settlement requires confirmed native position targets even when vault cash covers the request. Margin-first may leave positions unchanged while removing trading collateral, which increases actual leverage and reduces liquidation cushion. The same pending-withdrawal coordination applies in both modes. Unsupported proportional portfolios wait for creator action; the service does not silently switch to Margin-first.
