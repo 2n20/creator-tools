@@ -10,7 +10,14 @@ Release 0.6.0 supports trading-key version 4 and includes the withdrawal coordin
 
 ## Install
 
-Use Python 3.10 or later on your strategy computer or server. Follow the [published installation command](https://2n20.org/docs/quickstart#run-the-cli-yourself) for the current deployment and verify that version exists on [PyPI](https://pypi.org/project/2n20/). For unreleased source verification, use a locally built wheel; do not substitute an older deployment's package.
+Use Python 3.10 or later on your strategy computer or server:
+
+```sh
+python3 -m venv .venv-2n20
+source .venv-2n20/bin/activate
+python -m pip --isolated install '2n20==0.6.0'
+2n20 --version
+```
 
 You install the Hyperliquid SDK with the starter's separate runner dependency lock. The base CLI needs no execution SDK. See the [release instructions](https://github.com/2n20/creator-tools/blob/main/docs/releases.md) to build from source or check release artifacts.
 
