@@ -108,7 +108,8 @@ def pending_withdrawal_usdc(snapshot: dict, now: int | None = None,
 def poll_pending_withdrawal_usdc(scope: dict, rpc: Rpc, now: int | None = None) -> Decimal | None:
     """Read the withdrawal estimate in USDC using a previously verified scope."""
     snapshot = poll_pending_withdrawals(scope, rpc, now)
-    return pending_withdrawal_usdc(snapshot, now)
+    completed = int(time.time())
+    return pending_withdrawal_usdc(snapshot, completed if now is None else max(now, completed))
 
 
 @dataclass(frozen=True)

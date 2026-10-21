@@ -33,9 +33,9 @@ The multiplier does not set Hyperliquid leverage, move spot collateral or spend 
 
 `status.pendingWithdrawals.totalAssets` already excludes cash reserved for settled claims. `remainingAssets` subtracts only the estimated value of still-escrowed shares. Do not subtract `reservedAssets` again. Pending value is an estimate at current NAV, not a fixed payout or a promise that this cash is available on HyperCore. Amounts in the raw signal use USDC base units; the typed policy exposes Decimal USDC.
 
-## Minimal deduction for your own strategy (unreleased)
+## Minimal deduction for your own strategy
 
-The additive helpers below are in development version `0.6.1.dev0`, not published `0.6.0`. Keep your own signals, sizing and executor. If you already have the raw snapshot, convert it without another RPC read:
+The helpers below require SDK version `0.6.1` or later. Keep your own signals, sizing and executor. If you already have the raw snapshot, convert it without another RPC read:
 
 ```python
 from decimal import Decimal

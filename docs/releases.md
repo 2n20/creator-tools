@@ -45,11 +45,11 @@ The SHA-pinned workflow builds/tests artifacts, then gives OIDC permission only 
 
 Only then update website installation instructions to the published version and deploy through the application's established process. Retire an obsolete publisher only after the new release is verified. Do not move older tags or delete historical release evidence. TestPyPI is optional and was not used for the initial public-source transition. Record skipped checks separately from passing verification.
 
-## Unreleased: 0.6.1.dev0
+## 0.6.1
 
-Adds `pending_withdrawal_usdc(snapshot, now=None, max_age=20)` and `poll_pending_withdrawal_usdc(scope, rpc, now=None)`. These return gross estimated unsettled withdrawals in Decimal USDC, excluding settled reserves, or `None` for unknown evidence. The snapshot converter makes no RPC calls. Custom strategies can retain their execution and use a compatible equity input; the canonical starter includes the pure `withdrawal_sizing.py` example. See `WITHDRAWALS.md` for pool matching, whole-vault capital and admission limitations.
+Adds `pending_withdrawal_usdc(snapshot, now=None, max_age=20)` and `poll_pending_withdrawal_usdc(scope, rpc, now=None)`. These return gross estimated unsettled withdrawals in Decimal USDC, excluding settled reserves, or `None` for unknown evidence. The snapshot converter makes no RPC calls. The polling helper includes time spent reading in its 20-second freshness limit, including when a caller supplies a start time. Custom strategies can retain their execution and use a compatible equity input; the canonical starter includes the pure `withdrawal_sizing.py` example. See `WITHDRAWALS.md` for pool matching, whole-vault capital and admission limitations.
 
-No runner admission policy, live boundary, contract or service behavior changes. Published `0.6.0` and its install pin remain immutable. This development version is not published. Existing generated projects need explicit adaptation to use the new helper and example.
+No runner admission policy, live boundary, contract or service behavior changes. Published `0.6.0` artifacts and its release tag remain immutable. Existing generated projects need explicit adaptation to use the new helper and example.
 
 ## 0.6.0
 

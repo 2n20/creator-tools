@@ -209,3 +209,20 @@ class PendingWithdrawalAmountTests(unittest.TestCase):
         self.assertIsNone(poll_pending_withdrawal_usdc(scope, self.rpc, self.rpc.now))
         with patch.object(self.rpc, 'words', side_effect=SetupError('RPC_UNAVAILABLE', 'sensitive-disposable-marker')):
             self.assertIsNone(poll_pending_withdrawal_usdc(scope, self.rpc, self.rpc.now))
+
+    def test_poll_checks_completion_age_with_and_without_explicit_start_time(self):
+        from decimal import Decimal
+        from twon20.withdrawals import poll_pending_withdrawal_usdc
+        scope = {'vault': VAULT, 'tradingAccount': CORE, 'approvalContract': self.found.approval_contract}
+        original = self.rpc.call
+        for explicit in (False, True):
+            for delay in (19, 20):
+                with self.subTest(explicit=explicit, delay=delay):
+                    with patch('twon20.withdrawals.time.time', return_value=self.rpc.now) as clock:
+                        def delayed(method, params):
+                            result = original(method, params)
+                            clock.return_value = self.rpc.now + delay
+                            return result
+                        with patch.object(self.rpc, 'call', side_effect=delayed):
+                            amount = poll_pending_withdrawal_usdc(scope, self.rpc, self.rpc.now if explicit else None)
+                    self.assertEqual(amount, Decimal('0.000031') if delay == 19 else None)

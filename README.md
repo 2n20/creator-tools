@@ -6,7 +6,7 @@ Give your coding agent the `2n20-setup` skill, or run the `2n20` CLI yourself. R
 
 After approval, resume the same setup directory to verify trading access and get your strategy settings. You define and operate the strategy. The starter includes Hyperliquid candles, an educational band-breakout strategy, a replaceable limit chaser and execution reporting. It makes no profitability claim. The Python import is `twon20`.
 
-Release 0.6.0 supports trading-key version 4 and includes the withdrawal coordination described below. Earlier releases target the previous deployment. Existing generated projects need regeneration or adaptation; upgrading the CLI does not overwrite them.
+Release 0.6.1 supports trading-key version 4 and includes the withdrawal coordination described below. Version 0.6.0 also supports that deployment; versions through 0.5.2 target the previous deployment. Existing generated projects need regeneration or adaptation; upgrading the CLI does not overwrite them.
 
 ## Install
 
@@ -15,7 +15,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.6.0'
+python -m pip --isolated install '2n20==0.6.1'
 2n20 --version
 ```
 
@@ -102,7 +102,7 @@ Use standard account mode. Do not deposit into a Hyperliquid vault, stake HYPE, 
 
 Keep at least 0.01 HYPE in the trading account for Core transfer fees. Use client order ids of 2^64 or more. The vault's reduction orders use the operation nonce shifted left by 8 bits, plus the reduction's index in that round, and an order under one of those ids counts as that reduction. In the transactions observed so far, none of which mixed orders with transfers, Hyperliquid ran a transaction's actions in order, 5 or 6 L1 blocks after its HyperEVM block (about 0.3 to 0.4 seconds). Hyperliquid documents only that CoreWriter order actions and vault transfers wait a few seconds. It does not document that the actions stay in that order, or that one failed action leaves the later ones running. A reduction can fill while the transfer after it fails, and the freed collateral then waits in the trading account for the next round. A thin book can leave a reduction unfilled. The vault can remain in a Core state this software does not repair.
 
-Custom strategies can use the unreleased `0.6.1.dev0` helpers `pending_withdrawal_usdc(snapshot)` or `poll_pending_withdrawal_usdc(scope, rpc)` to obtain gross estimated unsettled withdrawals as Decimal USDC, without adopting the starter engine. Unknown evidence returns `None`. Subtract only from a compatible equity pool that funds the full withdrawal. See [minimal deduction and runnable sizing example](src/twon20/templates/hyperliquid-python/WITHDRAWALS.md#minimal-deduction-for-your-own-strategy-unreleased). These helpers are absent from published `0.6.0`; the default runner's risk holds remain unchanged.
+Custom strategies can use the SDK helpers `pending_withdrawal_usdc(snapshot)` or `poll_pending_withdrawal_usdc(scope, rpc)` to obtain gross estimated unsettled withdrawals as Decimal USDC, without adopting the starter engine. Unknown evidence returns `None`. Subtract only from a compatible equity pool that funds the full withdrawal. See [minimal deduction and runnable sizing example](src/twon20/templates/hyperliquid-python/WITHDRAWALS.md#minimal-deduction-for-your-own-strategy). These helpers require `0.6.1` or later; the default runner's risk holds remain unchanged.
 
 ## Documentation and contributions
 

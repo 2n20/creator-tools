@@ -29,6 +29,7 @@ The example strategy computes a rolling mean and sample standard deviation. A cl
 | `feed.py` | Fixture or official SDK candle feed |
 | `strategy.py` | `BandBreakout.evaluate(bars, checkpoint)` and the legacy finite paper example |
 | `runtime.py` | Strategy checkpoint, withdrawal coordination and capped capital-based sizing |
+| `withdrawal_sizing.py` | Pure pending-withdrawal deduction example for your own executor |
 | `executor.py` | Paper fills and incremental `LimitChaser` |
 | `runtime_adapter.py` | Verified account reads, exact owned-child submission/cancellation |
 | `runtime_io.py` | One serialized network worker and effect-admission checks |
@@ -37,6 +38,10 @@ The example strategy computes a rolling mean and sample standard deviation. A cl
 | `adapter.py`, `risk.py`, `execution.py` | Existing SDK/account boundary and separate finite diagnostics |
 
 To replace the strategy, change `BandBreakout` in `strategy.py` and its construction in `runtime.py`. Its only inputs are validated bars and its prior public checkpoint. Return `(Target(Decimal("1"), "my_reason"), checkpoint)` for a normalized long target, fraction `-1` for short, or `0` for flat. Return `None` as the target to retain the current intent. Fractions between -1 and 1 scale the capital-based target within the configured notional ceiling. No SDK client, order ID or signer belongs in the strategy. Use the same constructor in paper and live mode. A custom feed must return Bar/BarBatch observations for the configured market and interval, with the same validation and continuity rules. Other sampling methods require an explicit adaptation of that contract. It implements nonblocking `poll(now_ms)`, `healthy`, `done` and `close`; a custom executor implements `recover`, `set_target`, `step` and `shutdown`. Replace those constructors in the composition, keeping all effect and durability boundaries intact. This starter includes no backtester, optimizer or hosted service.
+
+## Use your own executor
+
+You can keep your existing bot. SDK version 0.6.1 adds a pending-withdrawal amount in Decimal USDC: subtract it from compatible equity, then keep your multiplier and price calculation. Unknown data returns `None`, so it cannot silently become a zero deduction. The generated [sizing example](withdrawal_sizing.py) and [short integration guide](WITHDRAWALS.md#minimal-deduction-for-your-own-strategy) show the inputs and explain when whole-vault remaining capital is the better base. Neither helper submits orders or replaces your executor. The standard runner keeps its existing hold on new risk during a pending withdrawal.
 
 ## Configure your strategy
 
