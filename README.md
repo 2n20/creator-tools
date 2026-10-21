@@ -6,18 +6,11 @@ Give your coding agent the `2n20-setup` skill, or run the `2n20` CLI yourself. R
 
 After approval, resume the same setup directory to verify trading access and get your strategy settings. You define and operate the strategy. The starter includes Hyperliquid candles, an educational band-breakout strategy, a replaceable limit chaser and execution reporting. It makes no profitability claim. The Python import is `twon20`.
 
-The published 0.5.2 package supports the existing deployed generation. This checkout prepares trading-key version 4 and requires a matching future deployment; its source is not the published package. Build local artifacts for verification only.
+Release 0.6.0 supports trading-key version 4 and includes the withdrawal coordination described below. Earlier releases target the previous deployment. Existing generated projects need regeneration or adaptation; upgrading the CLI does not overwrite them.
 
 ## Install
 
-Use Python 3.10 or later on your strategy computer or server:
-
-```sh
-python3 -m venv .venv-2n20
-source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.5.2'
-2n20 --version
-```
+Use Python 3.10 or later on your strategy computer or server. Follow the [published installation command](https://2n20.org/docs/quickstart#run-the-cli-yourself) for the current deployment and verify that version exists on [PyPI](https://pypi.org/project/2n20/). For unreleased source verification, use a locally built wheel; do not substitute an older deployment's package.
 
 You install the Hyperliquid SDK with the starter's separate runner dependency lock. The base CLI needs no execution SDK. See the [release instructions](https://github.com/2n20/creator-tools/blob/main/docs/releases.md) to build from source or check release artifacts.
 

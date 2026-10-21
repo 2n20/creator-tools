@@ -1,26 +1,26 @@
 {
-  "generation": "7ed54c06-cda8-8dd2-9c18-e38e3bbaf4db",
+  "generation": "7d89e206-a4d4-8cc2-9e92-14395dbb5e57",
   "chainId": 999,
-  "genesisHash": "0xda486bf0d500d665b3ffd1e39ae55a99fd6e3a1f0115ea6b01abf080567a83c8",
-  "deploymentBlock": "47447750",
-  "deploymentHash": "0x7d7ef5a210384e9fa5b2826163edcb8879d8bc66582da8553d3c226a0a3508be",
+  "genesisHash": "0x46319dd6c827f336518a3504cc807bc61a88fe84f5cccb9d72782863b1ffc542",
+  "deploymentBlock": "49136931",
+  "deploymentHash": "0x4550d7f978f962de5b73810c6380075bdcc8663bffca4ed70b7e5e102c795b80",
   "contracts": {
-    "LocalVenue": "0xFB1613C44Ad39500254e0441ca47F7E679862782",
+    "LocalVenue": "0x06498878dF1b77F02bbaA821e4201D582E2353FC",
     "MockUSDC": "0xb88339CB7199b77E23DB6E890353E22632Ba630f",
-    "PlatformController": "0x74bC4F5F60D2AaC4b17EFC2c0E65a9B307A693DE",
-    "Vault": "0xbB672914C1FA44708A71461d7647a7E8824aD8aa",
-    "VaultFactory": "0xA7014e4821cb9331D7CBc8e9b49c7F33632f61cf"
+    "PlatformController": "0x6b6806Cd01208883f042d2AE0Da98074E87293a1",
+    "Vault": "0xafd26cE5a2C1e9531C90e04f9a0EB4e7f5140281",
+    "VaultFactory": "0xE838b2B96b1F649cC41E1871bcEa417778F0094E"
   },
   "codeHashes": {
-    "LocalVenue": "0xb852373f0fbf062a41b8793d96daa76e50240a8b7c1b5f00e8cb329da47ec336",
+    "LocalVenue": "0x4529c0a3ae96aede359d0c16d0d9a4b02cb0095031e9df528fe67a08119efa78",
     "MockUSDC": "0xa119f674d44072e257f162aee49c7aba9b7a04fe2e8c84fcefddb366ab6d40cd",
-    "PlatformController": "0x48a6c47e84648ac4fd936b4930eb3f540e1d06b59e1685975f6b8d45933e98be",
-    "Vault": "0xcafbf2c5df3b85e47773cd4ee93821ad6d76fac4792c6ee51a089cb4b4c55ecd",
-    "VaultFactory": "0x8988a5c5815f908fbf98720513534d39af3fb0b9baabf531fa65cc3f835f58c3"
+    "PlatformController": "0xee109592d4d80c65f2b6748618885d8f3153678b2237372c65b38eb9bd14e656",
+    "Vault": "0xb6e357e94fcdaeeba4001ceceaa9385e45b46acd773798030270ba4d41bf80cd",
+    "VaultFactory": "0xdb00f0430c65c6df36a8252428ed09781361bbad5549d2611bde3519291213f0"
   },
   "venue": {
     "model": "sdk",
-    "address": "0xFB1613C44Ad39500254e0441ca47F7E679862782",
+    "address": "0x06498878dF1b77F02bbaA821e4201D582E2353FC",
     "operator": "0x6D046A9f585541755081f0D424e97A924d8B95c8"
   }
 }
