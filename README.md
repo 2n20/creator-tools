@@ -102,6 +102,8 @@ Use standard account mode. Do not deposit into a Hyperliquid vault, stake HYPE, 
 
 Keep at least 0.01 HYPE in the trading account for Core transfer fees. Use client order ids of 2^64 or more. The vault's reduction orders use the operation nonce shifted left by 8 bits, plus the reduction's index in that round, and an order under one of those ids counts as that reduction. In the transactions observed so far, none of which mixed orders with transfers, Hyperliquid ran a transaction's actions in order, 5 or 6 L1 blocks after its HyperEVM block (about 0.3 to 0.4 seconds). Hyperliquid documents only that CoreWriter order actions and vault transfers wait a few seconds. It does not document that the actions stay in that order, or that one failed action leaves the later ones running. A reduction can fill while the transfer after it fails, and the freed collateral then waits in the trading account for the next round. A thin book can leave a reduction unfilled. The vault can remain in a Core state this software does not repair.
 
+Custom strategies can use the unreleased `0.6.1.dev0` helpers `pending_withdrawal_usdc(snapshot)` or `poll_pending_withdrawal_usdc(scope, rpc)` to obtain gross estimated unsettled withdrawals as Decimal USDC, without adopting the starter engine. Unknown evidence returns `None`. Subtract only from a compatible equity pool that funds the full withdrawal. See [minimal deduction and runnable sizing example](src/twon20/templates/hyperliquid-python/WITHDRAWALS.md#minimal-deduction-for-your-own-strategy-unreleased). These helpers are absent from published `0.6.0`; the default runner's risk holds remain unchanged.
+
 ## Documentation and contributions
 
 - [Creator quickstart](https://2n20.org/docs/quickstart)

@@ -137,3 +137,65 @@ class PendingWithdrawalTests(unittest.TestCase):
         self.assertEqual(policy.state, "yielding")
         self.assertFalse(policy.ready_to_increase)
         self.assertIsNone(policy.capital.remaining_usdc)
+
+
+class PendingWithdrawalAmountTests(unittest.TestCase):
+    setUp = PendingWithdrawalTests.setUp
+    signal = PendingWithdrawalTests.signal
+
+    def test_amount_is_gross_exact_usdc_without_more_rpc_reads(self):
+        from decimal import Decimal
+        from twon20.withdrawals import pending_withdrawal_usdc
+        signal = self.signal()
+        with patch.object(self.rpc, 'words', side_effect=AssertionError('No duplicate read')), patch.object(self.rpc, 'call', side_effect=AssertionError('No duplicate read')):
+            amount = pending_withdrawal_usdc(signal, self.rpc.now)
+        self.assertEqual(amount, Decimal('0.000031'))  # ceil(3 * 101 / 10) base units
+        self.assertEqual(signal['uncoveredAssets'], '0')  # Cash coverage does not erase gross demand.
+        self.values.update({'totalAssets()': 1000000000, 'balanceOf(address)': 2})
+        self.assertEqual(Decimal(1000) - pending_withdrawal_usdc(self.signal(), self.rpc.now), 800)
+
+    def test_zero_only_when_fresh_and_priced(self):
+        from twon20.withdrawals import pending_withdrawal_usdc
+        self.values.update({'pendingRequestCount()': 0, 'balanceOf(address)': 0})
+        signal = self.signal()
+        self.assertEqual(pending_withdrawal_usdc(signal, self.rpc.now), 0)
+        self.assertEqual(signal['reservedAssets'], '7')
+        self.assertIsNone(pending_withdrawal_usdc(signal, self.rpc.now + 20))
+        self.assertIsNone(pending_withdrawal_usdc(signal, self.rpc.now + 5, max_age=5))
+        self.assertIsNone(pending_withdrawal_usdc(signal, self.rpc.now - 1))
+
+    def test_invalid_or_unpriced_snapshots_are_unknown(self):
+        from twon20.withdrawals import pending_withdrawal_usdc
+        signal = self.signal()
+        for changed in ({'owedAssets': None}, {'owedAssets': '-1'}, {'owedAssets': '1.1'},
+                        {'owedAssets': True}, {'owedAssets': 'NaN'}, {'owedAssets': '٣١'},
+                        {'remainingAssets': '99'}, {'operationInProgress': True},
+                        {'operationPhase': 2}, {'operationPhase': False},
+                        {'pendingRequestCount': '0'}, {'escrowedShares': '0'},
+                        {'reservedAssets': None}, {'evidence': 'unavailable'},
+                        {'blockTimestamp': True}, {'restricted': None}):
+            with self.subTest(changed=changed):
+                self.assertIsNone(pending_withdrawal_usdc(signal | changed, self.rpc.now))
+        self.assertIsNone(pending_withdrawal_usdc({}, self.rpc.now))
+
+    def test_large_uint_value_is_not_rounded_by_decimal_context(self):
+        from decimal import Decimal, localcontext
+        from twon20.withdrawals import pending_withdrawal_usdc
+        value = 10 ** 40 + 1
+        signal = self.signal() | {'owedAssets': str(value), 'totalAssets': str(value), 'remainingAssets': '0'}
+        with localcontext() as context:
+            context.prec = 6
+            self.assertEqual(pending_withdrawal_usdc(signal, self.rpc.now), Decimal(str(10 ** 34) + '.000001'))
+
+    def test_poll_reuses_canonical_reader_and_sanitizes_failures(self):
+        from twon20.withdrawals import poll_pending_withdrawal_usdc
+        from twon20.errors import SetupError
+        scope = {'vault': VAULT, 'tradingAccount': CORE, 'approvalContract': self.found.approval_contract}
+        self.assertIsNotNone(poll_pending_withdrawal_usdc(scope, self.rpc, self.rpc.now))
+        self.rpc.reorg = True
+        self.assertIsNone(poll_pending_withdrawal_usdc(scope, self.rpc, self.rpc.now))
+        self.rpc.reorg = False
+        self.rpc.phase = 2
+        self.assertIsNone(poll_pending_withdrawal_usdc(scope, self.rpc, self.rpc.now))
+        with patch.object(self.rpc, 'words', side_effect=SetupError('RPC_UNAVAILABLE', 'sensitive-disposable-marker')):
+            self.assertIsNone(poll_pending_withdrawal_usdc(scope, self.rpc, self.rpc.now))

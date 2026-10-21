@@ -183,3 +183,33 @@ class InitTests(unittest.TestCase):
             self.assertEqual(main(["init", str(self.destination), "--template", "hyperliquid-python", "--json"]), 130)
         self.assertEqual(json.loads(stdout.getvalue())["errorCode"], "INIT_INTERRUPTED")
         self.assertFalse(self.destination.exists())
+
+
+class GeneratedWithdrawalSizingTests(unittest.TestCase):
+    def test_generated_example_runs_without_network_or_signer(self):
+        import subprocess
+        import sys
+        import time
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary).resolve() / 'strategy'
+            result = init_project(destination)
+            self.assertIn('withdrawal_sizing.py', result['files'])
+            self.assertIn('tests/test_withdrawal_sizing.py', result['files'])
+            snapshot = {'evidence': 'verified-public-reads', 'blockTimestamp': int(time.time()),
+                        'operationInProgress': False, 'operationPhase': 0, 'restricted': False,
+                        'pendingRequestCount': '1', 'escrowedShares': '20',
+                        'owedAssets': '200000000', 'totalAssets': '1000000000',
+                        'remainingAssets': '800000000', 'reservedAssets': '0', 'uncoveredAssets': '0'}
+            data = {'snapshot': snapshot, 'equity': '1000', 'price': '100', 'multiplier': '3'}
+            # Resolve the source package for subprocesses without reading environment variables.
+            import twon20
+            source = str(Path(twon20.__file__).resolve().parent.parent)
+            environment = {'PYTHONPATH': source}
+            run = subprocess.run([sys.executable, 'withdrawal_sizing.py'], cwd=destination,
+                                 input=json.dumps(data), text=True, capture_output=True, env=environment)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(json.loads(run.stdout), {'desiredTotalQuantity': '24.000000'})
+            tests = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests',
+                                    '-p', 'test_withdrawal_sizing.py'], cwd=destination,
+                                   text=True, capture_output=True, env=environment)
+            self.assertEqual(tests.returncode, 0, tests.stderr)

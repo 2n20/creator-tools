@@ -33,6 +33,37 @@ The multiplier does not set Hyperliquid leverage, move spot collateral or spend 
 
 `status.pendingWithdrawals.totalAssets` already excludes cash reserved for settled claims. `remainingAssets` subtracts only the estimated value of still-escrowed shares. Do not subtract `reservedAssets` again. Pending value is an estimate at current NAV, not a fixed payout or a promise that this cash is available on HyperCore. Amounts in the raw signal use USDC base units; the typed policy exposes Decimal USDC.
 
+## Minimal deduction for your own strategy (unreleased)
+
+The additive helpers below are in development version `0.6.1.dev0`, not published `0.6.0`. Keep your own signals, sizing and executor. If you already have the raw snapshot, convert it without another RPC read:
+
+```python
+from decimal import Decimal
+from twon20.withdrawals import pending_withdrawal_usdc
+
+pending = pending_withdrawal_usdc(snapshot)
+if pending is None:
+    sizing_equity = None  # Unknown, never substitute zero pending demand.
+else:
+    sizing_equity = max(Decimal(0), equity - pending)
+```
+
+For a previously verified scope, `poll_pending_withdrawal_usdc(scope, rpc)` obtains the same canonical public snapshot and returns the amount directly. Both helpers return `Decimal` USDC, or `None` for stale, unpriced, malformed or in-flight evidence. Freshness is strictly less than 20 seconds; `max_age` can tighten that limit on the snapshot converter. Only fresh verified zero demand produces zero. A restricted but otherwise priced snapshot can still describe an amount; that amount grants no permission to trade.
+
+The amount is gross estimated unsettled `owedAssets`: escrowed shares valued at current mark-to-market NAV, rounded up to a USDC base unit. It excludes settled `reservedAssets`. Cash-covered requests still contribute the full pending amount. It is neither available margin, an account-specific funding shortfall nor a collateral reservation.
+
+Subtract gross pending from your equity only when that same pool funds the full withdrawal and the amount has not already been deducted. With $1,000 compatible equity and $200 pending, the sizing base is $800. Hyperliquid `crossMarginSummary.accountValue` is equity including P&L, not available margin. It may represent only part of the vault's assets. The SDK cannot infer whether an arbitrary equity pool matches all vault withdrawals. If funding spans vault cash, spot and perpetual equity, prefer the whole-vault adjusted capital in `withdrawal_policy(snapshot).capital.remaining_usdc` as your sizing base, with separate account collateral limits. Do not subtract reserves again or deduct pending twice from `remainingAssets`.
+
+The generated `withdrawal_sizing.py` is a runnable pure example using externally supplied snapshot, equity, price and multiplier. Call `desired_position(snapshot, equity, price, multiplier)` with Decimal inputs, or pipe a public JSON object to:
+
+```sh
+python withdrawal_sizing.py < public-sizing-input.json
+```
+
+The JSON fields are `snapshot` (the raw pending-withdrawal snapshot), `equity`, `price` and `multiplier` (decimal strings). A $100 price and multiplier of 3 produce a desired **total** position of 24 units from the $800 base. This is not an additional 24-unit buy. Compare against freshly reconciled actual positions and outstanding orders in your own executor. Unknown evidence returns a null target, not an instruction to flatten. The example has no signer, network access or order submission.
+
+This arithmetic alone does not implement withdrawal coordination or establish live safety. Preserve your submission-time risk admission, reconciliation, ownership checks, reduce-only protection, collateral and order limits. The default starter continues to hold new risk during pending withdrawals. Its full conservative policy below is separately available to custom clients; using the amount helper does not require adopting the starter engine or change its policy.
+
 ## Integrate another Python executor
 
 Keep your existing strategy and secret loader. Start with a CLI-verified vault/account scope, then use the public helper:

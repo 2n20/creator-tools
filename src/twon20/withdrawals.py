@@ -70,6 +70,47 @@ def poll_pending_withdrawals(scope: dict, rpc: Rpc, now: int | None = None) -> d
         return unavailable_pending_withdrawals()
 
 
+def _fresh_snapshot(snapshot: dict, now: int, max_age: int) -> bool:
+    stamp = snapshot["blockTimestamp"]
+    return (snapshot["evidence"] == "verified-public-reads" and type(stamp) is int
+            and 0 <= now - stamp < min(20, max_age))
+
+
+def pending_withdrawal_usdc(snapshot: dict, now: int | None = None,
+                            max_age: int = 20) -> Decimal | None:
+    """Estimated unsettled withdrawals across the vault, excluding settled reserves.
+
+    Return None for stale, unpriced, in-flight or invalid evidence. This amount
+    is not an account-specific margin deduction or permission to submit orders.
+    """
+    now = int(time.time()) if now is None else now
+    try:
+        if (not _fresh_snapshot(snapshot, now, max_age)
+                or snapshot["operationInProgress"] is not False
+                or type(snapshot["operationPhase"]) is not int or snapshot["operationPhase"] != 0):
+            return None
+        amounts = [snapshot[name] for name in ("owedAssets", "totalAssets", "remainingAssets",
+                                              "pendingRequestCount", "escrowedShares",
+                                              "reservedAssets", "uncoveredAssets")]
+        if any(not isinstance(value, str) or not value.isascii() or not value.isdecimal() for value in amounts):
+            return None
+        owed, total, remaining, count, shares, _reserved, _uncovered = map(int, amounts)
+        if (not 0 <= owed <= total or remaining != total - owed
+                or (count == 0) != (shares == 0) or shares == 0 and owed != 0
+                or shares > 0 and total > 0 and owed == 0
+                or type(snapshot["restricted"]) is not bool):
+            return None
+        return Decimal(f"{owed // 1_000_000}.{owed % 1_000_000:06d}")
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def poll_pending_withdrawal_usdc(scope: dict, rpc: Rpc, now: int | None = None) -> Decimal | None:
+    """Read the withdrawal estimate in USDC using a previously verified scope."""
+    snapshot = poll_pending_withdrawals(scope, rpc, now)
+    return pending_withdrawal_usdc(snapshot, now)
+
+
 @dataclass(frozen=True)
 class TradingCapital:
     total_usdc: Decimal | None
@@ -90,10 +131,9 @@ def withdrawal_policy(snapshot: dict, now: int | None = None, max_age: int = 20)
     now = int(time.time()) if now is None else now
     empty = TradingCapital(None, None)
     try:
-        stamp = snapshot["blockTimestamp"]
-        if (snapshot["evidence"] != "verified-public-reads" or type(stamp) is not int
-                or not 0 <= now - stamp < min(20, max_age)):
+        if not _fresh_snapshot(snapshot, now, max_age):
             raise ValueError()
+        stamp = snapshot["blockTimestamp"]
         demand = int(snapshot["pendingRequestCount"]) > 0 or int(snapshot["escrowedShares"]) > 0
         if type(snapshot["restricted"]) is not bool or type(snapshot["operationInProgress"]) is not bool:
             raise ValueError()
