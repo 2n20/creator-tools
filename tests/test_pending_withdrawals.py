@@ -164,6 +164,16 @@ class PendingWithdrawalAmountTests(unittest.TestCase):
         self.assertIsNone(pending_withdrawal_usdc(signal, self.rpc.now + 5, max_age=5))
         self.assertIsNone(pending_withdrawal_usdc(signal, self.rpc.now - 1))
 
+    def test_zero_nav_with_pending_shares_is_zero_amount_but_not_permission(self):
+        from decimal import Decimal
+        from twon20.withdrawals import pending_withdrawal_usdc, withdrawal_policy
+        self.values['totalAssets()'] = 0
+        signal = self.signal()
+        self.assertEqual(signal['pendingRequestCount'], '1')
+        self.assertEqual(signal['escrowedShares'], '3')
+        self.assertEqual(pending_withdrawal_usdc(signal, self.rpc.now), Decimal(0))
+        self.assertFalse(withdrawal_policy(signal, self.rpc.now).ready_to_increase)
+
     def test_invalid_or_unpriced_snapshots_are_unknown(self):
         from twon20.withdrawals import pending_withdrawal_usdc
         signal = self.signal()

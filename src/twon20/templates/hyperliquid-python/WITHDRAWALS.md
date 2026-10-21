@@ -48,13 +48,13 @@ else:
     sizing_equity = max(Decimal(0), equity - pending)
 ```
 
-For a previously verified scope, `poll_pending_withdrawal_usdc(scope, rpc)` obtains the same canonical public snapshot and returns the amount directly. Both helpers return `Decimal` USDC, or `None` for stale, unpriced, malformed or in-flight evidence. Freshness is strictly less than 20 seconds; `max_age` can tighten that limit on the snapshot converter. Only fresh verified zero demand produces zero. A restricted but otherwise priced snapshot can still describe an amount; that amount grants no permission to trade.
+For a previously verified scope, `poll_pending_withdrawal_usdc(scope, rpc)` obtains the same canonical public snapshot and returns the amount directly. Both helpers return `Decimal` USDC, or `None` for stale, unpriced, malformed or in-flight evidence. Freshness is strictly less than 20 seconds; `max_age` can tighten that limit on the snapshot converter. Zero means a freshly verified zero estimated amount, not that no request exists or trading is allowed. A restricted but otherwise priced snapshot can still describe an amount; that amount grants no permission to trade.
 
 The amount is gross estimated unsettled `owedAssets`: escrowed shares valued at current mark-to-market NAV, rounded up to a USDC base unit. It excludes settled `reservedAssets`. Cash-covered requests still contribute the full pending amount. It is neither available margin, an account-specific funding shortfall nor a collateral reservation.
 
 Subtract gross pending from your equity only when that same pool funds the full withdrawal and the amount has not already been deducted. With $1,000 compatible equity and $200 pending, the sizing base is $800. Hyperliquid `crossMarginSummary.accountValue` is equity including P&L, not available margin. It may represent only part of the vault's assets. The SDK cannot infer whether an arbitrary equity pool matches all vault withdrawals. If funding spans vault cash, spot and perpetual equity, prefer the whole-vault adjusted capital in `withdrawal_policy(snapshot).capital.remaining_usdc` as your sizing base, with separate account collateral limits. Do not subtract reserves again or deduct pending twice from `remainingAssets`.
 
-The generated `withdrawal_sizing.py` is a runnable pure example using externally supplied snapshot, equity, price and multiplier. Call `desired_position(snapshot, equity, price, multiplier)` with Decimal inputs, or pipe a public JSON object to:
+The generated `withdrawal_sizing.py` is a runnable pure long-position example using externally supplied snapshot, equity, price and multiplier. Call `desired_position(snapshot, equity, price, multiplier)` with Decimal inputs, or pipe a public JSON object to:
 
 ```sh
 python withdrawal_sizing.py < public-sizing-input.json
