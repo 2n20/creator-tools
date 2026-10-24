@@ -115,6 +115,10 @@ class Adapter:
 
     def snapshot(self, market):
         self.access.verify()
+        return self.market_snapshot(market)
+
+    def market_snapshot(self, market):
+        """Public market/account data; this read does not authorize an effect."""
         account = self.access.scope["tradingAccount"]
         try:
             context = self.read(self.info.meta_and_asset_ctxs)

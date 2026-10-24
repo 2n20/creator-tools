@@ -68,7 +68,7 @@ class CapitalRuntimeTests(unittest.TestCase):
         adapter = RuntimeAdapter(SimpleNamespace(scope={"tradingAccount": "disposable"}), info)
         info.user_fills_by_time.return_value = [{"oid": 77, "tid": 88, "time": self.now,
             "coin": "BTC", "side": "A", "sz": "6", "startPosition": "30"}]
-        adapter.snapshot = Mock(return_value=snapshot("24"))
+        adapter.market_snapshot = Mock(return_value=snapshot("24"))
         adapter.submit_child = Mock(side_effect=AssertionError("No reopen permitted"))
         self.runtime.executor.adapter = adapter
         with patch("runtime_adapter.time.time", side_effect=lambda: self.now / 1000):
@@ -162,7 +162,7 @@ class ExternalReductionTests(unittest.TestCase):
         self.state.update(position="30", settlementEpoch={"sinceMs": 1000, "throughMs": 22000})
         self.fill = {"oid": 99, "tid": 7, "time": 1500, "coin": "BTC", "side": "A", "sz": "6", "startPosition": "30"}
         self.info.user_fills_by_time.return_value = [self.fill]
-        self.adapter.snapshot = Mock(return_value=snapshot("24"))
+        self.adapter.market_snapshot = Mock(return_value=snapshot("24"))
         patcher = patch("runtime_adapter.time.time", return_value=2)
         patcher.start(); self.addCleanup(patcher.stop)
 
@@ -186,7 +186,7 @@ class ExternalReductionTests(unittest.TestCase):
         with self.assertRaises(Stop): self.adapter.observe("BTC", self.state)
 
     def test_foreign_protection_is_never_canceled_or_adopted(self):
-        self.adapter.snapshot.return_value = {**snapshot("24"), "orders": [{"oid": 500, "reduceOnly": True}]}
+        self.adapter.market_snapshot.return_value = {**snapshot("24"), "orders": [{"oid": 500, "reduceOnly": True}]}
         with self.assertRaises(Stop): self.adapter.observe("BTC", self.state)
         self.info.cancel.assert_not_called()
 
@@ -199,7 +199,7 @@ class ExternalReductionTests(unittest.TestCase):
         fixture.state["settlementEpoch"] = {"sinceMs": 1000, "throughMs": 22000}
         external = {**self.fill, "startPosition": "0.1", "sz": "0.02", "time": 1600}
         fixture.info.user_fills_by_time.return_value = [fixture.fill, external]
-        fixture.adapter.snapshot.return_value = snapshot("0.08")
+        fixture.adapter.market_snapshot.return_value = snapshot("0.08")
         detail = fixture.info.query_order_by_cloid.return_value["order"]
         detail["status"] = "open"
         observation = fixture.adapter.observe("BTC", fixture.state)

@@ -45,6 +45,10 @@ The SHA-pinned workflow builds/tests artifacts, then gives OIDC permission only 
 
 Only then update website installation instructions to the published version and deploy through the application's established process. Retire an obsolete publisher only after the new release is verified. Do not move older tags or delete historical release evidence. TestPyPI is optional and was not used for the initial public-source transition. Record skipped checks separately from passing verification.
 
+## 0.6.4
+
+Read-only runtime observations no longer repeat complete deployment and key discovery before planning or reconciling a child. The full authority check remains in the final submission preflight after SDK metadata, before signer loading, followed by fresh account/market/withdrawal checks and deadline admission. Cancellation retains its final authority check. Diagnostic snapshots retain their existing verification. Continuous execution now checks initial margin at the freshly read native cross leverage, together with the exchange's side-specific trade capacity, both taker fees and the fixed reserve. Missing/isolated/conflicting leverage evidence refuses new risk. The diagnostic smoke guard remains unlevered. Strategy, budgets, chase lifetime, slippage, key scope and withdrawal policy are unchanged. Existing projects need reviewed adapter.py and runtime_adapter.py updates.
+
 ## 0.6.3
 
 The starter reconciles a retained spot-to-perps transfer through the public non-funding ledger. One exact nonce/account/direction/USDC/amount event and matching current balances are required. Its hash and timestamp are retained and reverified. Missing identity, conflicting evidence, truncated responses and unavailable reads preserve the reservation. Resume never resends a transfer. Existing balance-observed journals remain supported and can reconcile with the same command. Human acknowledgement remains available only for unresolved identity. Dependencies, strategy, authority checks, budgets and setup guides are unchanged. Existing generated projects need reviewed adapter.py, execution.py and runner.py updates.

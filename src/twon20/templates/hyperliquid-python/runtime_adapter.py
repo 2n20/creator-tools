@@ -108,7 +108,7 @@ class RuntimeAdapter(Adapter):
             raise Stop("ACCOUNT_ACTIVITY_UNVERIFIED", "Complete retained external fill coverage is required.")
         # Snapshot runs after the fills read, so a late fill produces a mismatch
         # and another read, never optimistic retirement or replacement.
-        snapshot = self.snapshot(market)
+        snapshot = self.market_snapshot(market)
         if set(snapshot["positions"]) - {market}:
             raise Stop("ACCOUNT_CONFLICT", "Unowned market exposure remains untouched.")
         open_ids = set()
@@ -168,7 +168,31 @@ class RuntimeAdapter(Adapter):
         if abs(number(intent["quantity"], signed=True)) * number(intent["arrivalPrice"]) > cap * abs(number(intent["fraction"], signed=True)):
             raise Stop("CAPITAL_CHANGED", "Fresh remaining capital requires rebasing the retained target.")
 
+    def _margin_check(self, plan, current, exposure):
+        account = self.access.scope["tradingAccount"]
+        data = self.read(self.info.post, "/info", {"type": "activeAssetData", "user": account, "coin": plan["market"]})
+        leverage = data.get("leverage") if isinstance(data, dict) else None
+        if (not isinstance(data, dict) or not isinstance(data.get("user"), str) or data["user"].lower() != account.lower() or data.get("coin") != plan["market"]
+                or not isinstance(leverage, dict) or leverage.get("type") != "cross"
+                or type(leverage.get("value")) is not int or not 1 <= leverage["value"] <= 100
+                or not isinstance(data.get("maxTradeSzs"), list) or len(data["maxTradeSzs"]) != 2
+                or not isinstance(data.get("availableToTrade"), list) or len(data["availableToTrade"]) != 2):
+            raise Stop("LEVERAGE_UNVERIFIED", "Fresh native cross-margin settings and trade capacity are required. No account setting was changed.")
+        side = 0 if plan["buy"] else 1
+        fee = current["taker_fee"]
+        # Use the current exchange setting for initial margin, retaining both
+        # taker fees and the fixed reserve. Notional/capital caps remain separate.
+        required = exposure / leverage["value"] + exposure * 2 * fee + Decimal("0.05")
+        if (fee > Decimal("0.001") or number(plan["size"]) > number(data["maxTradeSzs"][side])
+                or min(current["perp_available"], number(data["availableToTrade"][side])) < required):
+            raise Stop("PERP_COLLATERAL_REQUIRED", "Fresh perpetual collateral cannot fund this bounded child at its current cross leverage.")
+
     def _preflight(self, plan, state, intent, admission):
+        admission.check(intent["id"], intent["deadlineMs"])
+        # Read-only observation does not need another complete deployment and
+        # key check. Every actual child still verifies authority here, after
+        # SDK metadata preparation and immediately before private loading.
+        self.access.verify()
         admission.check(intent["id"], intent["deadlineMs"])
         observed = self.observe(plan["market"], state)
         current = observed["snapshot"]
@@ -202,8 +226,8 @@ class RuntimeAdapter(Adapter):
         if ((plan["buy"] and price > price_bound) or (not plan["buy"] and price < price_bound)
                 or exposure > number(plan["maxNotional"]) or size * min(price, current["mark"]) < 10):
             raise Stop("CHILD_BOUND_CHANGED", "The child exceeds its fixed price/notional bound or venue minimum.")
-        if not reducing and (current["taker_fee"] > Decimal("0.001") or current["perp_available"] < exposure * (1 + 2 * current["taker_fee"]) + Decimal("0.05")):
-            raise Stop("PERP_COLLATERAL_REQUIRED", "Fresh perpetual collateral cannot fund this bounded child.")
+        if not reducing:
+            self._margin_check(plan, current, exposure)
         self._withdrawal_check(plan, intent)
         admission.check(intent["id"], intent["deadlineMs"])
 

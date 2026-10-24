@@ -59,14 +59,14 @@ class SubmissionTimingTests(unittest.TestCase):
     def test_slow_public_reads_fit_retained_deadline_without_duplicate_authority(self):
         result = self.submit()
         self.assertEqual(result["classification"], "accepted_unverified")
-        self.assertEqual(self.now, 41000)
-        self.assertEqual(self.access.verify.call_count, 2)
+        self.assertEqual(self.now, 21000)
+        self.assertEqual(self.access.verify.call_count, 1)
         self.access.signer.assert_called_once()
         self.sdk.order.assert_called_once()
         self.sdk.set_expires_after.assert_called_once_with(61000)
 
     def test_slow_final_check_still_expires_before_signer(self):
-        self.delay = 41000
+        self.delay = 61000
         self.assertEqual(self.submit(), {"classification": "not_submitted", "reason": "CHASE_EXPIRED"})
         self.access.signer.assert_not_called()
         self.sdk.order.assert_not_called()
@@ -92,6 +92,7 @@ class SubmissionTimingTests(unittest.TestCase):
     def test_ioc_crosses_quote_movement_within_retained_bound(self):
         limits = config()['execution']
         limits['iocAfterSeconds'] = 5
+        self.now += 6000
         current = self.adapter.observe('BTC', self.state)['snapshot']
         self.plan = plan_child(self.target, self.state, current, limits, self.now)
         self.child['plan'] = self.plan

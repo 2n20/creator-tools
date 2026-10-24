@@ -32,10 +32,13 @@ class FictionalVenue:
         self.submissions, self.cancellations = [], []
         self.callback = None
         methods = ["meta", "subscribe", "disconnect_websocket", "candles_snapshot", "meta_and_asset_ctxs",
-                   "l2_snapshot", "user_state", "open_orders", "frontend_open_orders", "perp_dexs",
+                   "l2_snapshot", "post", "user_state", "open_orders", "frontend_open_orders", "perp_dexs",
                    "spot_user_state", "user_fees", "query_order_by_cloid", "user_fills_by_time"]
         self.info = Mock(spec=methods)
         self.info.meta.return_value = {"universe": [{"name": "BTC", "szDecimals": 5}]}
+        self.info.post.side_effect = lambda path, payload: {"user": payload["user"], "coin": payload["coin"],
+            "leverage": {"type": "cross", "value": 1}, "maxTradeSzs": ["10000", "10000"],
+            "availableToTrade": ["10000", "10000"]}
         self.info.subscribe.side_effect = self.subscribe
         self.info.candles_snapshot.side_effect = self.candles_snapshot
         self.info.meta_and_asset_ctxs.return_value = [self.info.meta.return_value,

@@ -595,7 +595,7 @@ class AdapterEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.now = 2000
         self.info = Mock()
-        self.adapter = RuntimeAdapter(SimpleNamespace(scope={"tradingAccount": "disposable"}), self.info)
+        self.adapter = RuntimeAdapter(SimpleNamespace(scope={"tradingAccount": "disposable"}, verify=Mock()), self.info)
         self.child = {"cloid": "0x" + "1" * 32, "startedMs": 1000, "basePosition": "0", "oid": 11,
                       "plan": {"market": "BTC", "buy": True, "size": "0.25", "price": "100", "reduceOnly": False,
                                "decimals": 5, "maxNotional": "25", "slippageBps": 50, "tif": "Alo"}}
@@ -607,7 +607,7 @@ class AdapterEvidenceTests(unittest.TestCase):
         self.fill = {"oid": 11, "tid": 7, "time": 1500, "coin": "BTC", "side": "B", "sz": "0.1", "px": "100",
                      "fee": "0.002", "feeToken": "USDC", "crossed": False}
         self.info.user_fills_by_time.return_value = [self.fill]
-        self.adapter.snapshot = Mock(return_value=snapshot("0.1"))
+        self.adapter.market_snapshot = Mock(return_value=snapshot("0.1"))
         self.time_patch = patch("runtime_adapter.time.time", return_value=2)
         self.time_patch.start(); self.addCleanup(self.time_patch.stop)
 
@@ -620,7 +620,7 @@ class AdapterEvidenceTests(unittest.TestCase):
         evidence = self.adapter.observe("BTC", self.state)["evidence"]
         self.assertTrue(evidence["terminal"])
         self.assertFalse(evidence["complete"])
-        self.adapter.snapshot.return_value = snapshot()
+        self.adapter.market_snapshot.return_value = snapshot()
         self.assertFalse(self.adapter.observe("BTC", self.state)["evidence"]["complete"])
 
     def test_missing_remaining_size_or_zeroed_canceled_size_stays_unresolved(self):
@@ -635,7 +635,7 @@ class AdapterEvidenceTests(unittest.TestCase):
         self.info.user_fills_by_time.return_value = [self.fill] * 2000
         with self.assertRaises(Stop): self.adapter.observe("BTC", self.state)
         self.info.user_fills_by_time.return_value = [self.fill]
-        self.adapter.snapshot.return_value = {**snapshot("0.1"), "orders": [{"oid": 999}]}
+        self.adapter.market_snapshot.return_value = {**snapshot("0.1"), "orders": [{"oid": 999}]}
         with self.assertRaises(Stop): self.adapter.observe("BTC", self.state)
 
     def test_unknown_is_not_terminal_and_duplicate_fills_fail_closed(self):
@@ -647,6 +647,45 @@ class AdapterEvidenceTests(unittest.TestCase):
         self.setUp()
         self.info.user_fills_by_time.return_value = [self.fill, self.fill]
         with self.assertRaises(Stop): self.adapter.observe("BTC", self.state)
+
+    def test_margin_uses_fresh_cross_setting_with_fees_reserve_and_venue_capacity(self):
+        plan = {"market": "BTC", "buy": True, "size": "0.3"}
+        current = {**snapshot(), "perp_available": Decimal("12"), "taker_fee": Decimal("0.00045")}
+        data = {"user": "disposable", "coin": "BTC", "leverage": {"type": "cross", "value": 3},
+                "maxTradeSzs": ["0.35", "0.4"], "availableToTrade": ["12", "12"]}
+        self.info.post.return_value = data
+        self.adapter._margin_check(plan, current, Decimal("30"))
+        self.info.post.assert_called_with("/info", {"type": "activeAssetData", "user": "disposable", "coin": "BTC"})
+        for changed in ({"leverage": {"type": "cross", "value": 1}}, {"availableToTrade": ["10.076", "12"]},
+                        {"maxTradeSzs": ["0.29", "0.4"]}, {"user": "other"}, {"coin": "ETH"},
+                        {"leverage": {"type": "isolated", "value": 3}}, {"leverage": {"type": "cross", "value": True}},
+                        {"leverage": {"type": "cross", "value": 0}}, {"leverage": None}, {"availableToTrade": []}):
+            self.info.post.return_value = {**data, **changed}
+            with self.subTest(changed=changed), self.assertRaises(Stop): self.adapter._margin_check(plan, current, Decimal("30"))
+        self.info.post.return_value = data
+        with self.assertRaises(Stop): self.adapter._margin_check(plan, {**current,"perp_available":Decimal("10.076")}, Decimal("30"))
+        self.info.post.return_value = {**data,"maxTradeSzs":["0.2","0.4"],"availableToTrade":["0","12"]}
+        self.adapter._margin_check({**plan,"buy":False}, current, Decimal("30"))
+        self.adapter.access.verify.assert_not_called()
+
+    def test_readonly_observation_skips_authority_but_effect_still_refuses_revocation(self):
+        self.adapter.access.verify.side_effect = Stop("ACCESS_UNVERIFIED", "Disposable revocation")
+        self.assertTrue(self.adapter.observe("BTC", self.state)["evidence"]["complete"])
+        self.adapter.access.verify.assert_not_called()
+        target = intent()
+        admission = Admission(lambda: 2000)
+        admission.feed_ready.set(); admission.generation = target["id"]
+        plan = plan_child(target, execution_state(1000), snapshot(), config()["execution"], 1000)
+        exchange = Mock()
+        def prepare(expires, before_sign):
+            before_sign()
+            return exchange
+        self.adapter.exchange = Mock(side_effect=prepare)
+        child = {"plan": plan, "cloid": "0x" + "2" * 32}
+        result = self.adapter.submit_child(child, execution_state(1000), target, admission)
+        self.assertEqual(result, {"classification": "not_submitted", "reason": "ACCESS_UNVERIFIED"})
+        self.adapter.access.verify.assert_called_once_with()
+        exchange.order.assert_not_called()
 
     def test_fresh_participation_caps_are_rechecked_before_signing(self):
         limits = config()["execution"]
@@ -688,7 +727,7 @@ class AdapterEvidenceTests(unittest.TestCase):
 
     def test_cancellation_only_calls_exact_verified_owned_oid(self):
         self.info.query_order_by_cloid.return_value["order"]["status"] = "open"
-        self.adapter.snapshot.return_value["orders"] = [{"oid": 11}]
+        self.adapter.market_snapshot.return_value["orders"] = [{"oid": 11}]
         exchange = Mock()
         self.adapter.exchange = Mock(return_value=exchange)
         admission = Admission(lambda: 2000, 1500, 3000)
@@ -700,7 +739,7 @@ class AdapterEvidenceTests(unittest.TestCase):
 
     def test_cancellation_rechecks_authority_before_loading_signer(self):
         self.info.query_order_by_cloid.return_value["order"]["status"] = "open"
-        self.adapter.snapshot.return_value["orders"] = [{"oid": 11}]
+        self.adapter.market_snapshot.return_value["orders"] = [{"oid": 11}]
         self.adapter.access.verify = Mock(side_effect=Stop("ACCESS_UNVERIFIED", "Disposable revocation"))
         self.adapter.access.signer = Mock(side_effect=AssertionError("No signer"))
         admission = Admission(lambda: 2000, 1500, 3000)
