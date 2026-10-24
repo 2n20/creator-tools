@@ -102,6 +102,19 @@ class Rpc:
         payload = {"jsonrpc": "2.0", "id": self._id, "method": method, "params": params}
         return self._request(payload, {self._id})[self._id]
 
+    def batch(self, calls):
+        """Read one bounded batch without caching headers or latest state."""
+        if not isinstance(calls, list) or not 1 <= len(calls) <= 48:
+            raise SetupError("READ_BOUND", "A public read batch exceeds its bound.")
+        payload=[]
+        for call in calls:
+            if not isinstance(call,(list,tuple)) or len(call)!=2 or call[0] not in self.METHODS or not isinstance(call[1],list):
+                raise SetupError("READ_ONLY", "Only explicit public read calls are supported.")
+            self._id+=1
+            payload.append({"jsonrpc":"2.0","id":self._id,"method":call[0],"params":call[1]})
+        results=self._request(payload,{row["id"] for row in payload})
+        return [results[row["id"]] for row in payload]
+
     def prefetch(self, calls):
         """Batch only canonical fixed-block reads within this Rpc instance."""
         if not isinstance(calls, list) or not 1 <= len(calls) <= 48:
@@ -123,13 +136,8 @@ class Rpc:
             return
         if len(self._prefetched) + len(pending) > 128:
             raise SetupError("READ_BOUND", "The fixed-block public read cache exceeds its bound.")
-        payload, keys = [], {}
-        for key, (method, params) in pending.items():
-            self._id += 1
-            keys[self._id] = key
-            payload.append({"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
-        results = self._request(payload, set(keys))
-        self._prefetched.update({key: results[identity] for identity, key in keys.items()})
+        results = self.batch(list(pending.values()))
+        self._prefetched.update(dict(zip(pending, results)))
 
     def prefetch_words(self, reads, block):
         self.prefetch([("eth_call", [{"to": target, "data": call_data(signature, args)}, block])

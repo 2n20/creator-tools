@@ -17,6 +17,9 @@ LINK = f"https://2n20.org/vaults/{VAULT}?network=mainnet"
 
 
 class FakeRpc:
+    def batch(self, calls):
+        return [self.call(method, params) for method, params in calls]
+
     def prefetch(self, calls):
         # Semantic fixtures remain per-call; transport batching is tested separately.
         pass

@@ -269,16 +269,16 @@ def discover(link: str, rpc: Rpc | None = None, now: int | None = None, anchor: 
     vault, network, canonical_link = vault_link(link)
     anchor = anchor if anchor is not None else trust_anchor(network)
     rpc = rpc if rpc is not None else Rpc(network)
-    chain_id = integer(rpc.call("eth_chainId", []))
+    chain, deployment_block, receipt, current = rpc.batch([
+        ("eth_chainId", []), ("eth_getBlockByNumber", [hex(int(anchor["deploymentBlock"])), False]),
+        ("eth_getTransactionReceipt", [anchor["deploymentHash"]]), ("eth_getBlockByNumber", ["latest", False])])
+    chain_id = integer(chain)
     if chain_id != anchor["chainId"] or chain_id != 999:
         raise SetupError("WRONG_CHAIN", "The public RPC is on the wrong chain. No key was created.")
-    deployment_block = rpc.call("eth_getBlockByNumber", [hex(int(anchor["deploymentBlock"])), False])
     if not isinstance(deployment_block, dict) or not same_hash(deployment_block.get("hash"), anchor["genesisHash"]) or integer(deployment_block.get("number")) != int(anchor["deploymentBlock"]):
         raise SetupError("UNVERIFIED_DEPLOYMENT", "The deployment block does not match this release's reviewed trust anchor.")
-    receipt = rpc.call("eth_getTransactionReceipt", [anchor["deploymentHash"]])
     if not isinstance(receipt, dict) or not same_hash(receipt.get("transactionHash"), anchor["deploymentHash"]) or not same_hash(receipt.get("blockHash"), anchor["genesisHash"]) or integer(receipt.get("status")) != 1 or integer(receipt.get("blockNumber")) != int(anchor["deploymentBlock"]) or address(receipt.get("contractAddress")) != address(anchor["contracts"]["VaultFactory"]):
         raise SetupError("UNVERIFIED_DEPLOYMENT", "The factory deployment receipt does not match the reviewed deployment.")
-    current = rpc.call("eth_getBlockByNumber", ["latest", False])
     number, block_hash, timestamp = block_identity(current, int(time.time()) if now is None else now)
     fixed = {"blockHash": block_hash, "requireCanonical": True}
     contracts = anchor["contracts"]
@@ -326,12 +326,13 @@ def discover(link: str, rpc: Rpc | None = None, now: int | None = None, anchor: 
 
 def verify_current(found: Discovery, rpc: Rpc, now: int | None = None):
     """Reject reorganizations and state changes before using public evidence."""
-    if integer(rpc.call("eth_chainId", [])) != found.anchor["chainId"]:
+    chain, canonical, head = rpc.batch([("eth_chainId", []),
+        ("eth_getBlockByNumber", [hex(found.block_number), False]), ("eth_getBlockByNumber", ["latest", False])])
+    if integer(chain) != found.anchor["chainId"]:
         raise SetupError("CHAIN_CHANGED", "The chain changed during discovery. Try again.")
-    canonical = rpc.call("eth_getBlockByNumber", [hex(found.block_number), False])
     if block_identity(canonical)[:2] != (found.block_number, found.block_hash):
         raise SetupError("CHAIN_CHANGED", "The chain changed during discovery. Try again.")
-    head_number, head_hash, _ = block_identity(rpc.call("eth_getBlockByNumber", ["latest", False]), int(time.time()) if now is None else now)
+    head_number, head_hash, _ = block_identity(head, int(time.time()) if now is None else now)
     if head_number < found.block_number:
         raise SetupError("CHAIN_CHANGED", "The chain head moved backwards. Try again.")
     fixed = {"blockHash": head_hash, "requireCanonical": True}

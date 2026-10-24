@@ -45,6 +45,10 @@ The SHA-pinned workflow builds/tests artifacts, then gives OIDC permission only 
 
 Only then update website installation instructions to the published version and deploy through the application's established process. Retire an obsolete publisher only after the new release is verified. Do not move older tags or delete historical release evidence. TestPyPI is optional and was not used for the initial public-source transition. Record skipped checks separately from passing verification.
 
+## 0.6.6
+
+Independent chain, deployment-receipt and header reads use uncached read-only batches. Response IDs remain exact and complete; canonicality, freshness, code, owner, key, lifecycle and scope checks are unchanged. This further reduces serial round trips in final authority checks. Latest headers are never cached. Template strategy, execution configuration and limits are unchanged from 0.6.5.
+
 ## 0.6.5
 
 Discovery batches independent canonical fixed-block calls and code reads, matches every response by its exact ID, and reuses results only for the same parameters/block within one Rpc instance. Latest/canonical block checks still reach the provider. Missing, duplicate, foreign or failed batch responses establish no partial cache. Existing retry budgets remain. The runner keeps account-wide builder checks at its final entry/cancel preflight, while read-only native observations no longer repeat them. Account observation starts at most once per five seconds. Resolved expired and dust targets stop idle polling; a newer closed-bar signal may create a fresh target within the original session. It cannot replay an expired target on the same bar or replace an unresolved child. Strategy, notional/slippage bounds, per-target chase limits and session deadlines are unchanged. Existing projects need reviewed adapter.py, runtime_adapter.py, executor.py and runtime.py updates.

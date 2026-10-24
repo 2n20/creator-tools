@@ -65,6 +65,22 @@ class BatchTests(unittest.TestCase):
             rpc.call('eth_getBlockByNumber',['latest',False]);rpc.call('eth_getBlockByNumber',['latest',False])
             self.assertEqual(send.call_count,2)
 
+    def test_header_batches_remain_uncached_and_identity_checked(self):
+        rpc=Rpc('mainnet')
+        calls=[('eth_chainId',[]),('eth_getBlockByNumber',['latest',False])]
+        count=[0]
+        def respond(url,payload,**kw):
+            count[0]+=1
+            return list(reversed([{'jsonrpc':'2.0','id':row['id'],'result':str(count[0])+':'+row['method']} for row in payload]))
+        with patch('twon20.rpc.request_json',side_effect=respond) as send:
+            self.assertEqual(rpc.batch(calls),['1:eth_chainId','1:eth_getBlockByNumber'])
+            self.assertEqual(rpc.batch(calls),['2:eth_chainId','2:eth_getBlockByNumber'])
+            self.assertEqual(send.call_count,2)
+        self.assertEqual(rpc._prefetched,{})
+        with patch('twon20.rpc.request_json') as send,self.assertRaises(SetupError):
+            rpc.batch([('eth_sendRawTransaction',[])])
+        send.assert_not_called()
+
     def test_cached_contract_results_still_require_exact_abi_length(self):
         rpc=Rpc('mainnet')
         with patch('twon20.rpc.request_json',side_effect=lambda url,payload,**kw:[{'jsonrpc':'2.0','id':row['id'],'result':'0x12'} for row in payload]):
