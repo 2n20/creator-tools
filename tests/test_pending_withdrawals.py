@@ -9,6 +9,10 @@ from twon20.status import status
 
 class PendingWithdrawalTests(unittest.TestCase):
     def setUp(self):
+        from twon20.errors import SetupError
+        service = patch('twon20.withdrawals.fetch_valuation', side_effect=SetupError('UNAVAILABLE', 'Offline fixture'))
+        service.start()
+        self.addCleanup(service.stop)
         self.rpc = FakeRpc()
         self.values = {"pendingRequestCount()": 1, "balanceOf(address)": 3,
                        "reservedAssets()": 7, "totalAssets()": 101, "totalSupply()": 10,

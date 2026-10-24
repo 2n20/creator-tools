@@ -8,6 +8,7 @@ from typing import Literal
 from .discovery import BOOK_WORDS, TRADING_KEY_VERSION, Book, ZERO, block_identity, parse_book, word256
 from .errors import SetupError
 from .rpc import Rpc
+from .valuation import ValuationReport, fetch_valuation, valuation_word
 
 REPORT_TTL_SECONDS = 45
 
@@ -19,7 +20,8 @@ def unavailable_pending_withdrawals() -> dict:
 
 
 def pending_withdrawals_at(rpc: Rpc, vault: str, core: str, book: Book, number: int,
-                           block_hash: str, timestamp: int, now: int) -> dict:
+                           block_hash: str, timestamp: int, now: int,
+                           report: ValuationReport | None = None) -> dict:
     """Read bounded aggregate demand at the caller's verified canonical block."""
     try:
         fixed = {"blockHash": block_hash, "requireCanonical": True}
@@ -28,9 +30,16 @@ def pending_withdrawals_at(rpc: Rpc, vault: str, core: str, book: Book, number: 
         shares = read("balanceOf(address)", [vault])
         reserved = read("reservedAssets()")
         supply = read("totalSupply()")
-        valued = book.phase == 0 and (core == ZERO or book.priced and now - REPORT_TTL_SECONDS <= book.observed_at <= now + 5)
-        total = read("totalAssets()") if valued else 0
-        uncovered = read("uncoveredAssets()") if valued else 0
+        observed = report.observed_at if report else book.observed_at
+        valued = book.phase == 0 and (core == ZERO or (report is not None or book.priced)
+                  and now - REPORT_TTL_SECONDS <= observed <= min(timestamp, now + 5))
+        total = uncovered = 0
+        if valued:
+            try:
+                financial = (lambda name: valuation_word(rpc, vault, report, name, [], fixed)) if report else read
+                total, uncovered = financial("totalAssets()"), financial("uncoveredAssets()")
+            except (SetupError, ValueError, TypeError):
+                valued = False  # Preserve observed demand when fresh pricing cannot finish.
         if shares > supply:
             return unavailable_pending_withdrawals()
         canonical_block = rpc.call("eth_getBlockByNumber", [hex(number), False])
@@ -38,7 +47,7 @@ def pending_withdrawals_at(rpc: Rpc, vault: str, core: str, book: Book, number: 
         canonical = block_identity(canonical_block, completed)
         if canonical != (number, block_hash, timestamp) or completed - timestamp > REPORT_TTL_SECONDS:
             return unavailable_pending_withdrawals()
-        if valued and core != ZERO and completed - book.observed_at > REPORT_TTL_SECONDS:
+        if valued and core != ZERO and completed - observed > REPORT_TTL_SECONDS:
             valued = False
         # A pending operation can change valuation; preserve demand but do not price it.
         owed = (shares * total + supply - 1) // supply if shares else 0
@@ -49,7 +58,7 @@ def pending_withdrawals_at(rpc: Rpc, vault: str, core: str, book: Book, number: 
                 "reservedAssets": str(reserved), "uncoveredAssets": str(uncovered) if valued else None,
                 "restricted": book.restricted, "operationInProgress": book.phase != 0,
                 "operationPhase": book.phase, "blockNumber": str(number), "blockHash": block_hash,
-                "blockTimestamp": timestamp}
+                "blockTimestamp": timestamp, "valuationObservedAt": observed if core != ZERO else timestamp}
     except (SetupError, KeyError, IndexError, TypeError, ValueError):
         return unavailable_pending_withdrawals()
 
@@ -58,6 +67,14 @@ def poll_pending_withdrawals(scope: dict, rpc: Rpc, now: int | None = None) -> d
     """Read public demand using an already verified vault/account scope. No key is read."""
     now = int(time.time()) if now is None else now
     try:
+        report = None
+        if scope["tradingAccount"] != ZERO:
+            try:
+                report = fetch_valuation(scope)
+            except (SetupError, KeyError, IndexError, TypeError, ValueError):
+                pass
+        # Choose the block after obtaining the report, so it cannot predate it.
+        now = max(now, int(time.time()))
         number, block_hash, timestamp = block_identity(rpc.call("eth_getBlockByNumber", ["latest", False]), now)
         fixed = {"blockHash": block_hash, "requireCanonical": True}
         venue, vault, core = scope["approvalContract"], scope["vault"], scope["tradingAccount"]
@@ -65,7 +82,7 @@ def poll_pending_withdrawals(scope: dict, rpc: Rpc, now: int | None = None) -> d
             return unavailable_pending_withdrawals()
         book = parse_book(tuple(rpc.words(venue, "books(address)", [vault], fixed, BOOK_WORDS)), core)
         return pending_withdrawals_at(rpc, scope["vault"], scope["tradingAccount"], book,
-                                      number, block_hash, timestamp, now)
+                                      number, block_hash, timestamp, now, report)
     except (SetupError, KeyError, IndexError, TypeError, ValueError):
         return unavailable_pending_withdrawals()
 
@@ -73,7 +90,8 @@ def poll_pending_withdrawals(scope: dict, rpc: Rpc, now: int | None = None) -> d
 def _fresh_snapshot(snapshot: dict, now: int, max_age: int) -> bool:
     stamp = snapshot["blockTimestamp"]
     return (snapshot["evidence"] == "verified-public-reads" and type(stamp) is int
-            and 0 <= now - stamp < min(20, max_age))
+            and 0 <= now - stamp < min(20, max_age)
+            and 0 <= now - snapshot.get("valuationObservedAt", stamp) < REPORT_TTL_SECONDS)
 
 
 def pending_withdrawal_usdc(snapshot: dict, now: int | None = None,
@@ -154,4 +172,5 @@ def withdrawal_policy(snapshot: dict, now: int | None = None, max_age: int = 20)
 
 
 def poll_withdrawal_policy(scope: dict, rpc: Rpc, now: int | None = None) -> WithdrawalPolicy:
-    return withdrawal_policy(poll_pending_withdrawals(scope, rpc, now), now)
+    snapshot = poll_pending_withdrawals(scope, rpc, now)
+    return withdrawal_policy(snapshot, max(now or 0, int(time.time())))

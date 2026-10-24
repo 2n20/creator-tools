@@ -6,7 +6,7 @@ Give your coding agent the `2n20-setup` skill, or run the `2n20` CLI yourself. R
 
 After approval, resume the same setup directory to verify trading access and get your strategy settings. You define and operate the strategy. The starter includes Hyperliquid candles, an educational band-breakout strategy, a replaceable limit chaser and execution reporting. It makes no profitability claim. The Python import is `twon20`.
 
-Release 0.6.1 supports trading-key version 4 and includes the withdrawal coordination described below. Version 0.6.0 also supports that deployment; versions through 0.5.2 target the previous deployment. Existing generated projects need regeneration or adaptation; upgrading the CLI does not overwrite them.
+Release 0.6.2 supports trading-key version 4 and includes the withdrawal coordination described below. Version 0.6.0 also supports that deployment; versions through 0.5.2 target the previous deployment. Existing generated projects need regeneration or adaptation; upgrading the CLI does not overwrite them.
 
 ## Install
 
@@ -15,7 +15,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.6.1'
+python -m pip --isolated install '2n20==0.6.2'
 2n20 --version
 ```
 
@@ -119,3 +119,5 @@ We maintain the CLI, skills and starter in this public repository. We keep the a
 `status.pendingWithdrawals` reports fresh public withdrawal demand before a release becomes restricted, including cash-covered requests. `pendingRequestCount`, `escrowedShares`, `owedAssets`, `reservedAssets`, `uncoveredAssets`, `totalAssets` and `remainingAssets` are decimal strings. `remainingAssets` is totalAssets less pending owedAssets, floored at zero. Vault totalAssets already excludes settled reserves; do not subtract reservedAssets again. `owedAssets` is the rounded-up current NAV value of escrowed shares, not a guaranteed payout. Reserved settled claims are separate from that value. The snapshot includes `restricted`, `operationInProgress`, `operationPhase` and its canonical block identity. Reads share one block hash. Missing reads, a changed block or chain evidence older than 45 seconds return `evidence: unavailable` with null values, never zero demand. During an operation, or while valuation is unpriced or stale, the count and reserves remain visible but valuation amounts are null.
 
 Custom Python bots can call `twon20.withdrawals.poll_withdrawal_policy(scope, rpc)` with a previously verified scope containing `vault`, `approvalContract` and `tradingAccount`. It returns a typed policy with `state`, `ready_to_increase`, `reason` and `capital.remaining_usdc`. The lower-level `poll_pending_withdrawals` and starter `Access.pending_withdrawals()` remain available. Policy data must be no more than 20 seconds old; unknown valuation, pending requests, restriction or an in-progress operation inhibits new risk. Reads neither load a signer nor authorize orders. This coordination is cooperative: a direct API client can bypass it, and public data cannot make HyperCore settlement atomic.
+
+Polling helpers in `0.6.2` fetch a fresh signed valuation from 2n20 and apply it with read-only `withReport` contract calls. The contract verifies the operator signature, vault and current nonces. This works when an idle vault’s stored report has expired, without a wallet confirmation or gas. Report freshness stays at 45 seconds and policy snapshots stay below 20 seconds. Unavailable pricing leaves withdrawal demand visible and holds new risk. The live preview reports current capital readiness. Existing generated projects need a reviewed update to show that preview field.

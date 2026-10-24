@@ -425,11 +425,17 @@ def run_command(args):
             if not args.execute:
                 snapshot = adapter.snapshot(config["market"])
                 validate_market(config, snapshot)
+                capital = withdrawal_policy(access.pending_withdrawals())
                 return {"schema": "2n20-runner-result-v1", "stage": "runtime_preview", "scope": access.scope,
                         "config": config, "sizeDecimals": snapshot["decimals"], "sessionSeconds": args.max_seconds, "ownedCleanupGraceSeconds": 60,
                         "newSession": args.new_session, "recoverOnly": args.recover_only, "ordersSubmitted": 0, "signerLoaded": False,
                         "accountHasConflicts": bool(snapshot["positions"] or snapshot["orders"]),
-                        "requiredHumanAction": "Review these limits and then explicitly use --execute LIVE_RUNTIME. Reuse the same state directory."}, 0
+                        "capital": {"state": capital.state, "reason": capital.reason,
+                                    "remainingUsdc": str(capital.capital.remaining_usdc) if capital.capital.remaining_usdc is not None else None,
+                                    "readyToIncrease": capital.ready_to_increase},
+                        "requiredHumanAction": ("Review these limits and then explicitly use --execute LIVE_RUNTIME. Reuse the same state directory."
+                                                if capital.ready_to_increase else
+                                                "Capital is not ready for new risk. Resolve the reported reason and repeat this preview before authorizing execution.")}, 0
             scope = access.scope
             guard = stack.enter_context(account_lock(scope["tradingAccount"]))
         journal = RuntimeJournal(Path(args.state_directory or (".runtime-" + args.mode + "-" + args.feed)).expanduser().absolute(), scope)

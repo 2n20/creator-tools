@@ -36,6 +36,7 @@ class ConfigurationFlowTests(unittest.TestCase):
 
     def check(self, observed, mode="check"):
         access = Mock(scope=SCOPE, directory=self.root, vault=LINK)
+        access.pending_withdrawals.return_value = {}
         sdk = Mock()
         sdk.snapshot.return_value = observed
         args = [mode, "--vault", LINK, "--directory", str(self.root), "--config", str(self.path)]
@@ -65,6 +66,8 @@ class ConfigurationFlowTests(unittest.TestCase):
                 preview = self.check(snapshot(market=market, decimals=decimals), "run")
                 self.assertEqual(preview["config"], config)
                 self.assertEqual(preview["sizeDecimals"], decimals)
+                self.assertFalse(preview["capital"]["readyToIncrease"])
+                self.assertIn("repeat this preview", preview["requiredHumanAction"])
 
                 strategy = Mock()
                 strategy.evaluate.return_value = (Target(Decimal(1), "replacement_strategy"), {"observed": True})
