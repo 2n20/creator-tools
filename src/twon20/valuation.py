@@ -3,7 +3,7 @@
 import re
 import time
 from dataclasses import dataclass
-from threading import Lock
+from threading import Lock, Thread
 
 from eth_abi import decode, encode
 from eth_abi.exceptions import DecodingError
@@ -18,6 +18,8 @@ REPORT_TYPES = ["address", "uint64", "uint64", "uint64", "bool", "uint16", "uint
                 "uint16", "uint64", "bool", "bytes32"]
 ENDPOINT = "https://2n20.org/api/sdk/valuation"
 _reports = {}
+_refreshing = set()
+_retry_at = {}
 _report_lock = Lock()
 
 
@@ -40,11 +42,53 @@ def fetch_valuation(scope: dict) -> ValuationReport:
     vault = address(scope["vault"])
     generation = anchor["generation"]
     key = (generation, vault)
+    now = int(time.time())
     with _report_lock:
         saved = _reports.get(key)
-        if saved and 0 <= int(time.time()) - saved.observed_at < 10:
-            return saved  # Every consumer still verifies it against current EVM state.
-        _reports.pop(key, None)
+        usable = saved is not None and 0 <= now - saved.observed_at < 40
+        refresh = (key not in _refreshing and len(_refreshing) < 4
+                   and now >= _retry_at.get(key, 0))
+        if usable and now - saved.observed_at < 5:
+            refresh = False
+        if not usable and not refresh:
+            raise SetupError("VALUATION_UNAVAILABLE", "Fresh capital valuation is being checked. New risk must wait.")
+        if refresh:
+            _refreshing.add(key)
+    if usable:
+        if refresh:
+            Thread(target=_background_refresh, args=(key,), name="2n20-valuation", daemon=True).start()
+        return saved  # Verify the signature and current state in every EVM read.
+    return _refresh(key)
+
+
+def _background_refresh(key):
+    try:
+        _refresh(key)
+    except Exception:
+        pass  # Retain usable evidence until expiry; never expose a transport body.
+
+
+def _refresh(key):
+    try:
+        report = _request_valuation(*key)
+        with _report_lock:
+            if len(_reports) >= 128 and key not in _reports:
+                _reports.pop(next(iter(_reports)))
+            _reports[key] = report
+            _retry_at.pop(key, None)
+        return report
+    except Exception:
+        with _report_lock:
+            if len(_retry_at) >= 128 and key not in _retry_at:
+                _retry_at.pop(next(iter(_retry_at)))
+            _retry_at[key] = int(time.time()) + 5
+        raise
+    finally:
+        with _report_lock:
+            _refreshing.discard(key)
+
+
+def _request_valuation(generation, vault):
     result = request_json(ENDPOINT, {"generation": generation, "vault": vault}, timeout=65)
     if (not isinstance(result, dict) or result.get("status") != "ready"
             or result.get("generation") != generation or address(result.get("vault")) != vault
@@ -64,12 +108,7 @@ def fetch_valuation(scope: dict) -> ValuationReport:
             or not any(values[17]) or type(result.get("observedAt")) is not int
             or result["observedAt"] != values[3] or not now - 45 < values[3] <= now):
         raise ValueError("Valuation is not fresh and priced")
-    report = ValuationReport(raw, bytes.fromhex(result["signature"][2:]), values[3])
-    with _report_lock:
-        if len(_reports) >= 128:
-            _reports.pop(next(iter(_reports)))
-        _reports[key] = report
-    return report
+    return ValuationReport(raw, bytes.fromhex(result["signature"][2:]), values[3])
 
 
 def valuation_word(rpc, vault, report, signature, arguments, fixed):

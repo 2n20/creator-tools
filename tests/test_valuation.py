@@ -57,10 +57,13 @@ class FreshValuationTests(unittest.TestCase):
             amount = 23_000_000 if action == keccak(text='totalAssets()')[:4] else 0
             return '0x' + encode(['bytes'], [encode(['uint256'], [amount])]).hex()
         self.rpc.words, self.rpc.call = read, simulate
-        self.clock = patch('time.time', return_value=self.now)
-        self.clock.start(); self.addCleanup(self.clock.stop)
+        clock = patch('time.time', return_value=self.now)
+        self.clock = clock.start(); self.addCleanup(clock.stop)
         cache = patch('twon20.valuation._reports', {})
         cache.start(); self.addCleanup(cache.stop)
+        for name, value in (('_refreshing', set()), ('_retry_at', {})):
+            state = patch('twon20.valuation.' + name, value)
+            state.start(); self.addCleanup(state.stop)
         self.transport = patch('twon20.valuation.request_json', side_effect=lambda *a, **k: self.envelope())
         self.transport.start(); self.addCleanup(self.transport.stop)
 
@@ -114,9 +117,12 @@ class FreshValuationTests(unittest.TestCase):
             with self.subTest(changes=changes), patch('twon20.valuation.request_json', return_value=good | changes):
                 with self.assertRaises((ValueError, SetupError)):
                     fetch_valuation(self.scope)
+                from twon20.valuation import _retry_at
+                _retry_at.clear()
         for index, value in ((3, self.now - 45), (3, self.now + 1), (4, False), (13, 1), (17, bytes(32))):
             prior = self.values[index]; self.values[index] = value
             with self.assertRaises(ValueError): fetch_valuation(self.scope)
+            _retry_at.clear()
             self.values[index] = prior
         with patch('twon20.valuation.request_json', side_effect=SetupError('UNAVAILABLE', 'private-marker')):
             result = poll_pending_withdrawals(self.scope, self.rpc)
@@ -133,3 +139,21 @@ class FreshValuationTests(unittest.TestCase):
         self.assertFalse(withdrawal_policy(second).ready_to_increase)
         self.assertEqual(second['owedAssets'], '6900000')
         self.assertEqual(len(self.simulations), 4)
+
+    def test_refresh_does_not_block_canonical_reads_or_extend_expiry(self):
+        from twon20 import valuation
+        first = fetch_valuation(self.scope)
+        self.clock.return_value = self.now + 12
+        with patch('twon20.valuation.Thread') as worker:
+            self.assertEqual(fetch_valuation(self.scope), first)
+            worker.assert_called_once()
+            self.assertTrue(worker.call_args.kwargs['daemon'])
+            self.assertEqual(fetch_valuation(self.scope), first)
+            self.assertEqual(worker.call_count, 1)
+            self.clock.return_value = self.now + 40
+            with self.assertRaises(SetupError): fetch_valuation(self.scope)
+        self.assertEqual(len(valuation._refreshing), 1)
+        self.values[3] = self.now + 40
+        valuation._background_refresh((trust_anchor('mainnet')['generation'], VAULT))
+        self.assertFalse(valuation._refreshing)
+        self.assertEqual(fetch_valuation(self.scope).observed_at, self.now + 40)
