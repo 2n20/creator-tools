@@ -77,6 +77,7 @@ class FakeAdapter:
         return {"known": True, "terminal": True, "filled": str(self.close_fill if plan["reduceOnly"] else self.entry_fill), "oid": 1 if plan["reduceOnly"] else 0}
 
     def usdc_token(self): return "USDC:0x" + "f" * 32
+    def collateral_evidence(self, intent): return None
     def submit_collateral(self, amount, nonce, token, market="BTC"):
         assert self.journal.read(COLLATERAL)["phase"] == "pending"
         self.calls.append((str(amount), nonce, token))
@@ -324,6 +325,34 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(len(adapter.calls), 1)
         with self.assertRaises(Stop): collateral(adapter, self.journal, "6", "BTC", self.clock.time, self.clock.sleep)
 
+    def test_collateral_exact_receipt_recovers_without_resending_or_signing(self):
+        adapter = FakeAdapter(self.journal)
+        collateral(adapter, self.journal, "5", "BTC", self.clock.time, self.clock.sleep)
+        nonce = self.journal.read(COLLATERAL)["nonce"]
+        receipt = {"hash": "0x" + "1" * 64, "time": nonce + 1000, "nonce": nonce}
+        adapter.collateral_evidence = Mock(return_value=receipt)
+        with patch.object(adapter, "submit_collateral", side_effect=AssertionError("duplicate transfer")):
+            result = collateral(adapter, self.journal, "5", "BTC", self.clock.time, self.clock.sleep)
+            self.assertEqual(result["stage"], "complete")
+            self.assertTrue(result["transferIdentityVerified"])
+            self.assertEqual(result["transfersSubmitted"], 0)
+            self.assertEqual(self.journal.read(COLLATERAL)["receipt"], receipt)
+            reviewed = review_collateral(adapter, self.journal, "BTC")
+            self.assertEqual(reviewed["stage"], "complete")
+            self.assertTrue(reviewed["transferIdentityVerified"])
+            reviewed = review_collateral(adapter, self.journal, "BTC", True, nonce)
+            self.assertEqual(reviewed["stage"], "complete")
+            self.assertEqual(self.journal.read(COLLATERAL)["phase"], "complete")
+            self.journal.save(SMOKE, {"phase": "entry_pending"})
+            with self.assertRaises(Stop) as failure: review_collateral(adapter, self.journal, "BTC")
+            self.assertEqual(failure.exception.code, "OTHER_INTENT_UNRESOLVED")
+            adapter.collateral_evidence.return_value = None
+            with self.assertRaises(Stop): collateral(adapter, self.journal, "5", "BTC", self.clock.time, self.clock.sleep)
+            adapter.collateral_evidence.return_value = receipt
+            adapter.transfer = False
+            self.assertEqual(collateral(adapter, self.journal, "5", "BTC", self.clock.time, self.clock.sleep)["stage"], "historical_completion")
+        self.assertEqual(len(adapter.calls), 1)
+
     def test_collateral_recovery_review_and_exact_human_acknowledgement_never_submit(self):
         adapter = FakeAdapter(self.journal)
         self.assertEqual(collateral(adapter, self.journal, "5", "BTC", self.clock.time, self.clock.sleep)["stage"], "balance_change_observed")
@@ -453,6 +482,44 @@ class AccessTests(unittest.TestCase):
 
 
 class AdapterTests(unittest.TestCase):
+    def test_collateral_ledger_requires_unique_exact_retained_action(self):
+        import copy
+        nonce = 1790000000000
+        intent = {"nonce": nonce, "amount": "5", "token": "USDC:0x" + "f" * 32}
+        event = {"time": nonce + 59000, "hash": "0x" + "1" * 64,
+                 "delta": {"type": "send", "user": ACCOUNT, "destination": ACCOUNT,
+                           "sourceDex": "spot", "destinationDex": "", "token": "USDC", "amount": "5.0",
+                           "usdcValue": "5.0", "fee": "0.0", "nativeTokenFee": "0.0", "nonce": nonce}}
+        access = Mock(); access.scope = SCOPE
+        info = Mock()
+        adapter = Adapter(access, info)
+        with patch.object(adapter, "usdc_token", return_value=intent["token"]), patch("adapter.time.time", return_value=nonce / 1000 + 60):
+            info.post.return_value = [event]
+            self.assertEqual(adapter.collateral_evidence(intent), {"hash": event["hash"], "time": event["time"], "nonce": nonce})
+            self.assertEqual(info.post.call_args.args, ("/info", {"type": "userNonFundingLedgerUpdates", "user": ACCOUNT, "startTime": nonce - 5000, "endTime": nonce + 60000}))
+            info.post.return_value = []
+            self.assertIsNone(adapter.collateral_evidence(intent))
+            other = copy.deepcopy(event); other["delta"]["nonce"] += 1
+            info.post.return_value = [other]
+            self.assertIsNone(adapter.collateral_evidence(intent))
+            for field, value in (("type", "deposit"), ("user", OWNER), ("destination", OWNER),
+                                 ("sourceDex", ""), ("destinationDex", "spot"), ("token", "HYPE"),
+                                 ("amount", "6"), ("usdcValue", "6"), ("fee", "1"), ("nativeTokenFee", "1")):
+                wrong = copy.deepcopy(event); wrong["delta"][field] = value
+                info.post.return_value = [wrong]
+                with self.subTest(field=field), self.assertRaises(Stop): adapter.collateral_evidence(intent)
+            for response in ([event, event], [event] * 500, {}, [{**event, "time": nonce + 60001}],
+                             [{**event, "time": nonce - 5001}], [{**event, "hash": "invalid"}],
+                             [{**event, "time": True}], [{**event, "delta": None}]):
+                info.post.return_value = response
+                with self.subTest(response=str(response)[:80]), self.assertRaises(Stop): adapter.collateral_evidence(intent)
+            info.post.side_effect = TimeoutError("PRIVATE_PROVIDER_TEXT")
+            with self.assertRaises(Stop) as failure: adapter.collateral_evidence(intent)
+            self.assertNotIn("PRIVATE_PROVIDER_TEXT", str(failure.exception))
+            with patch.object(adapter, "usdc_token", return_value="USDC:0x" + "e" * 32), self.assertRaises(Stop): adapter.collateral_evidence(intent)
+        info.order.assert_not_called()
+        access.signer.assert_not_called()
+
     def public_fixture(self):
         access = Mock(); access.scope = SCOPE
         info = Mock()

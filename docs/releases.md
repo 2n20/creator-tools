@@ -45,6 +45,10 @@ The SHA-pinned workflow builds/tests artifacts, then gives OIDC permission only 
 
 Only then update website installation instructions to the published version and deploy through the application's established process. Retire an obsolete publisher only after the new release is verified. Do not move older tags or delete historical release evidence. TestPyPI is optional and was not used for the initial public-source transition. Record skipped checks separately from passing verification.
 
+## 0.6.3
+
+The starter reconciles a retained spot-to-perps transfer through the public non-funding ledger. One exact nonce/account/direction/USDC/amount event and matching current balances are required. Its hash and timestamp are retained and reverified. Missing identity, conflicting evidence, truncated responses and unavailable reads preserve the reservation. Resume never resends a transfer. Existing balance-observed journals remain supported and can reconcile with the same command. Human acknowledgement remains available only for unresolved identity. Dependencies, strategy, authority checks, budgets and setup guides are unchanged. Existing generated projects need reviewed adapter.py, execution.py and runner.py updates.
+
 ## 0.6.2
 
 Polling withdrawal helpers obtain fresh signed valuation evidence through the public, rate-protected valuation endpoint. They apply it in read-only EVM calls, where the venue verifies the operator signature, vault and current state/key nonces. Canonical demand and reserves remain visible if pricing fails. Report TTL remains 45 seconds; the 20-second policy limit includes read time, and policy also checks report expiry. No signer, transaction, gas or funded checkpoint is needed. Live previews include capital readiness before execution authorization. Existing generated projects need a reviewed runtime.py update for the preview field; installed polling helpers gain the fresh read path on upgrade. Dependencies, keys, configuration, strategy, execution limits and setup guides are unchanged.

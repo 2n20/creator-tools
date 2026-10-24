@@ -363,6 +363,42 @@ class Adapter:
         except (KeyError, TypeError, ValueError):
             raise Stop("COLLATERAL_TOKEN_UNVERIFIED", "Native USDC metadata is unavailable; no transfer can be authorized.") from None
 
+    def collateral_evidence(self, intent):
+        """Bind one public ledger event to the retained action, never balances alone."""
+        nonce = intent["nonce"]
+        now = int(time.time() * 1000)
+        start, end = max(0, nonce - 5000), min(now, nonce + 300000)
+        if end < start or self.usdc_token().lower() != intent["token"].lower():
+            raise Stop("COLLATERAL_TOKEN_UNVERIFIED", "The retained transfer token or clock cannot be verified. No transfer was resent.")
+        account = self.access.scope["tradingAccount"]
+        events = self.read(self.info.post, "/info", {"type": "userNonFundingLedgerUpdates", "user": account,
+                                                    "startTime": start, "endTime": end})
+        # Time-range responses cap at 500 entries/blocks. A full page cannot
+        # establish uniqueness, so retain ambiguity rather than skip history.
+        if not isinstance(events, list) or len(events) >= 500:
+            raise Stop("COLLATERAL_EVIDENCE_UNAVAILABLE", "The bounded ledger response is unavailable or potentially truncated. Preserve the original intent.")
+        matches = []
+        for event in events:
+            if (not isinstance(event, dict) or type(event.get("time")) is not int or not start <= event["time"] <= end
+                    or not isinstance(event.get("hash"), str) or not re.fullmatch(r"0x[0-9a-fA-F]{64}", event["hash"])
+                    or not isinstance(event.get("delta"), dict)):
+                raise Stop("COLLATERAL_EVIDENCE_UNAVAILABLE", "The public ledger response has unsupported evidence. Preserve the original intent.")
+            delta = event["delta"]
+            if delta.get("nonce") != nonce:
+                continue
+            if (type(delta["nonce"]) is not int or delta.get("type") != "send"
+                    or not isinstance(delta.get("user"), str) or delta["user"].lower() != account.lower()
+                    or not isinstance(delta.get("destination"), str) or delta["destination"].lower() != account.lower()
+                    or delta.get("sourceDex") != "spot" or delta.get("destinationDex") != "" or delta.get("token") != "USDC"
+                    or number(delta.get("amount")) != number(intent["amount"])
+                    or number(delta.get("usdcValue")) != number(intent["amount"])
+                    or number(delta.get("fee")) != 0 or number(delta.get("nativeTokenFee")) != 0):
+                raise Stop("COLLATERAL_EVIDENCE_CONFLICT", "The ledger nonce has conflicting transfer details. No action was resent.")
+            matches.append({"hash": event["hash"].lower(), "time": event["time"], "nonce": nonce})
+        if len(matches) > 1:
+            raise Stop("COLLATERAL_EVIDENCE_CONFLICT", "The transfer nonce is not unique in the bounded ledger response. Preserve the original intent.")
+        return matches[0] if matches else None
+
     def submit_collateral(self, amount, nonce, token, market="BTC"):
         from execution import collateral_plan
         def preflight():

@@ -114,9 +114,9 @@ def run(args):
                         raise Stop("RECOVERY_MISSING", "There is no retained collateral request in this state directory.")
                     guard.reserve(journal, access.scope)
                     result = review_collateral(adapter, journal, args.market, bool(args.acknowledge), args.request_nonce)
-                    if args.acknowledge: guard.clear()
+                    if result["stage"] in {"complete", "recovery_acknowledged"}: guard.clear()
                 finally: journal.close()
-            return result, 0 if args.acknowledge else 2
+            return result, 0 if result["stage"] in {"complete", "recovery_acknowledged"} else 2
         bounds = Bounds(args.market, args.side, number(args.max_notional), args.slippage_bps, args.duration_seconds) if args.command == "live-smoke" else None
         if not bounds:
             amount = number(args.amount)

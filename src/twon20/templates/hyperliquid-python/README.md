@@ -179,7 +179,7 @@ python runner.py collateral --vault '<VAULT_URL>' --directory '<SETUP_DIRECTORY>
 
 It refuses an amount equal to the entire available balance, more than 100 USDC, more than six decimals, existing positions/orders or unavailable native-USDC metadata. To authorize that specific transfer, repeat the same command with `--execute TRANSFER_TO_PERPS`. This does not authorize an order. It uses the documented `agentSendAsset` action through the official SDK's public signer and transport. The pinned SDK does not expose a convenience method for this action; the adapter does not implement signing or a replacement HTTP API.
 
-The command reports matching spot/perpetual balance changes separately from the identity of an individual transfer. The reviewed API response does not provide a transaction identifier that this example can bind to a ledger event, so it does not claim a specific transfer was confirmed. Recheck current collateral using `check` before a separately reviewed smoke preview. If submission is ambiguous, this command will never resend the transfer automatically. Its account reservation remains in place while the individual transfer identity is unresolved.
+The command verifies the retained request against the public non-funding ledger. Completion requires one event with its exact nonce, account, direction, USDC amount and zero transfer fees, plus matching spot/perpetual balances. It retains the event hash and time and checks them again on resume. Missing identifiers, conflicting events or a potentially truncated response leave the request unresolved. If submission is ambiguous, repeating the exact command reconciles through public reads and never resends the transfer. Matching balances alone do not release its account reservation.
 
 ## Interruptions and recovery
 
@@ -187,7 +187,7 @@ Public durable intent is written atomically with mode 600 before a signer is loa
 
 Lost responses and `unknownOid` are unresolved evidence, never permission to enter again. Repeat the exact `resumeCommand` shown in output to reconcile the existing intent through public reads. A confirmed entry awaiting its first reduction after a restart additionally requires `--execute LIVE_SMOKE --resume-close`. The original order/fills are reverified before that reduction. A reduction already attempted is never repeated, including partial fills or rejections. Other account fills after the intent began invalidate recovery, even if someone closed and reopened the same net position. Completed history is rechecked against current fills and flat account state; a changed or unavailable account never appears currently complete. Review unresolved exposure yourself. The example makes no exactly-once delivery claim.
 
-After matching collateral balance changes have been observed, a human may review the exact retained request and explicitly acknowledge the remaining unverified transfer identity. This command performs public reads and local journaling only:
+If the ledger cannot identify the transfer after matching collateral balance changes have been observed, a human may review the exact retained request and explicitly acknowledge the remaining unverified transfer identity. This command performs public reads and local journaling only:
 
 ```sh
 python runner.py recovery --vault '<VAULT_URL>' --directory '<SETUP_DIRECTORY>' --state-directory '<ORIGINAL_STATE_DIRECTORY>'

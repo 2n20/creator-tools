@@ -161,13 +161,21 @@ def collateral_plan(snapshot, amount):
 
 
 def validate_collateral_intent(intent, amount):
-    allowed = {"schema", "scope", "amount", "source", "destination", "spotBefore", "perpBefore", "phase", "nonce", "token", "humanAcknowledgement", "acknowledgedAt"}
-    if set(intent) - allowed or intent.get("amount") != str(number(amount)) or intent.get("phase") not in {"pending", "balance_observed", "human_acknowledged"} or type(intent.get("nonce")) is not int or intent.get("source") != "spot" or intent.get("destination") != "native USDC perpetual collateral" or not re.fullmatch(r"USDC:0x[0-9a-fA-F]{32}", intent.get("token", "")):
+    allowed = {"schema", "scope", "amount", "source", "destination", "spotBefore", "perpBefore", "phase", "nonce", "token", "receipt", "humanAcknowledgement", "acknowledgedAt"}
+    if set(intent) - allowed or intent.get("amount") != str(number(amount)) or intent.get("phase") not in {"pending", "balance_observed", "human_acknowledged", "complete"} or type(intent.get("nonce")) is not int or intent.get("source") != "spot" or intent.get("destination") != "native USDC perpetual collateral" or not re.fullmatch(r"USDC:0x[0-9a-fA-F]{32}", intent.get("token", "")):
         raise Stop("JOURNAL_CONFLICT", "The retained transfer has a different amount or unsupported state. Never send another transfer to resolve ambiguity.")
     if not 0 < number(intent["amount"]) < number(intent["spotBefore"]) or number(intent["amount"]) > 100:
         raise Stop("JOURNAL_CONFLICT", "The retained transfer exceeds its original explicit balance limit.")
     if intent["phase"] == "human_acknowledged" and (intent.get("humanAcknowledgement") != "UNVERIFIED_COLLATERAL" or type(intent.get("acknowledgedAt")) is not int):
         raise Stop("JOURNAL_CONFLICT", "The recorded human recovery acknowledgement is invalid.")
+    receipt = intent.get("receipt")
+    if receipt is not None and (not isinstance(receipt, dict) or set(receipt) != {"hash", "time", "nonce"}
+            or not isinstance(receipt.get("hash"), str) or not re.fullmatch(r"0x[0-9a-f]{64}", receipt["hash"])
+            or type(receipt.get("time")) is not int or not intent["nonce"] - 5000 <= receipt["time"] <= intent["nonce"] + 300000
+            or type(receipt.get("nonce")) is not int or receipt["nonce"] != intent["nonce"]):
+        raise Stop("JOURNAL_CONFLICT", "The retained collateral receipt does not match its original request.")
+    if intent["phase"] == "complete" and receipt is None:
+        raise Stop("JOURNAL_CONFLICT", "Collateral completion requires its retained public receipt.")
 
 
 def review_collateral(adapter, journal, market, acknowledge=False, request_nonce=None):
@@ -193,6 +201,8 @@ def review_collateral(adapter, journal, market, acknowledge=False, request_nonce
     snapshot = adapter.snapshot(market)
     if snapshot["positions"] or snapshot["orders"]:
         raise Stop("ACCOUNT_CONFLICT", "Current account exposure or orders require your review. A recovery acknowledgement cannot modify them.")
+    if intent["phase"] == "complete":
+        return collateral(adapter, journal, intent["amount"], market)
     if acknowledge:
         intent.update(phase="human_acknowledged", humanAcknowledgement="UNVERIFIED_COLLATERAL", acknowledgedAt=int(time.time()))
         journal.save(COLLATERAL, intent)
@@ -210,7 +220,7 @@ def collateral(adapter, journal, amount, market, clock=time.time, sleep=time.sle
     submitted = False
     if intent:
         validate_collateral_intent(intent, amount)
-        if intent["phase"] in {"balance_observed", "human_acknowledged"}:
+        if intent["phase"] == "human_acknowledged":
             return report("balance_change_observed", journal, COLLATERAL, transfersSubmitted=0, transferIdentityVerified=False,
                           nextAction="Matching balance changes were previously observed. They do not identify a specific transfer. Run the read-only check; this command will not repeat it.")
     else:
@@ -224,13 +234,27 @@ def collateral(adapter, journal, amount, market, clock=time.time, sleep=time.sle
         snapshot = adapter.snapshot(market)
         if snapshot["positions"] or snapshot["orders"]:
             raise Stop("ACCOUNT_CONFLICT", "Account activity appeared during transfer verification. Review it yourself; no further transfer or order will be sent.")
-        # No response, balance increase alone or web success is completion.
+        receipt = adapter.collateral_evidence(intent)
+        if intent.get("receipt") is not None and receipt != intent["receipt"]:
+            raise Stop("COLLATERAL_EVIDENCE_CONFLICT", "The retained transfer receipt could not be reverified. No transfer was resent.")
+        # Require the exact nonce/account/direction/amount/token ledger event
+        # together with matching current balances. An accepted response is not completion.
         if number(snapshot["spot_available"]) == number(intent["spotBefore"]) - number(amount) and number(snapshot["perp_available"]) == number(intent["perpBefore"]) + number(amount):
+            if receipt is not None:
+                intent.update(phase="complete", receipt=receipt)
+                journal.save(COLLATERAL, intent)
+                return report("complete", journal, COLLATERAL, transfersSubmitted=int(submitted),
+                              amount=str(number(amount)), balanceChangeVerified=True, transferIdentityVerified=True,
+                              receipt=receipt, nextAction="The retained transfer identity and current balances were verified through public reads. No order was authorized by this transfer.")
             intent["phase"] = "balance_observed"
             journal.save(COLLATERAL, intent)
             return report("balance_change_observed", journal, COLLATERAL, transfersSubmitted=int(submitted),
                           amount=str(number(amount)), balanceChangeVerified=True, transferIdentityVerified=False,
                           nextAction="Matching spot/perpetual balance changes were observed, without proof of a specific transfer identity. Run the read-only check. No order was authorized by this transfer.")
+        if intent["phase"] == "complete":
+            return report("historical_completion", journal, COLLATERAL, transfersSubmitted=0,
+                          transferIdentityVerified=True, balanceChangeVerified=False, receipt=receipt,
+                          nextAction="The original transfer receipt was verified, but current balances changed. Review the account; no transfer was resent.")
         sleep(min(delay, max(0, deadline - clock())))
         delay = min(delay * 2, 4)
     return report("unresolved_evidence", journal, COLLATERAL, transfersSubmitted=int(submitted),
