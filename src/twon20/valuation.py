@@ -3,6 +3,7 @@
 import re
 import time
 from dataclasses import dataclass
+from threading import Lock
 
 from eth_abi import decode, encode
 from eth_abi.exceptions import DecodingError
@@ -16,6 +17,8 @@ REPORT_TYPES = ["address", "uint64", "uint64", "uint64", "bool", "uint16", "uint
                 "int256", "uint32", "uint64", "uint64", "address", "uint64", "uint8",
                 "uint16", "uint64", "bool", "bytes32"]
 ENDPOINT = "https://2n20.org/api/sdk/valuation"
+_reports = {}
+_report_lock = Lock()
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,12 @@ def fetch_valuation(scope: dict) -> ValuationReport:
         raise ValueError("Unverified valuation scope")
     vault = address(scope["vault"])
     generation = anchor["generation"]
+    key = (generation, vault)
+    with _report_lock:
+        saved = _reports.get(key)
+        if saved and 0 <= int(time.time()) - saved.observed_at < 10:
+            return saved  # Every consumer still verifies it against current EVM state.
+        _reports.pop(key, None)
     result = request_json(ENDPOINT, {"generation": generation, "vault": vault}, timeout=65)
     if (not isinstance(result, dict) or result.get("status") != "ready"
             or result.get("generation") != generation or address(result.get("vault")) != vault
@@ -55,7 +64,12 @@ def fetch_valuation(scope: dict) -> ValuationReport:
             or not any(values[17]) or type(result.get("observedAt")) is not int
             or result["observedAt"] != values[3] or not now - 45 < values[3] <= now):
         raise ValueError("Valuation is not fresh and priced")
-    return ValuationReport(raw, bytes.fromhex(result["signature"][2:]), values[3])
+    report = ValuationReport(raw, bytes.fromhex(result["signature"][2:]), values[3])
+    with _report_lock:
+        if len(_reports) >= 128:
+            _reports.pop(next(iter(_reports)))
+        _reports[key] = report
+    return report
 
 
 def valuation_word(rpc, vault, report, signature, arguments, fixed):

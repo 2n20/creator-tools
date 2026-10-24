@@ -59,6 +59,8 @@ class FreshValuationTests(unittest.TestCase):
         self.rpc.words, self.rpc.call = read, simulate
         self.clock = patch('time.time', return_value=self.now)
         self.clock.start(); self.addCleanup(self.clock.stop)
+        cache = patch('twon20.valuation._reports', {})
+        cache.start(); self.addCleanup(cache.stop)
         self.transport = patch('twon20.valuation.request_json', side_effect=lambda *a, **k: self.envelope())
         self.transport.start(); self.addCleanup(self.transport.stop)
 
@@ -120,3 +122,14 @@ class FreshValuationTests(unittest.TestCase):
             result = poll_pending_withdrawals(self.scope, self.rpc)
         self.assertIsNone(result['totalAssets'])
         self.assertEqual(result['pendingRequestCount'], '0')
+
+    def test_repeated_admission_reads_reuse_only_the_signed_envelope(self):
+        with patch('twon20.valuation.request_json', side_effect=lambda *a, **k: self.envelope()) as transport:
+            first = poll_pending_withdrawals(self.scope, self.rpc)
+            self.count, self.shares = 1, 3
+            second = poll_pending_withdrawals(self.scope, self.rpc)
+            self.assertEqual(transport.call_count, 1)
+        self.assertTrue(withdrawal_policy(first).ready_to_increase)
+        self.assertFalse(withdrawal_policy(second).ready_to_increase)
+        self.assertEqual(second['owedAssets'], '6900000')
+        self.assertEqual(len(self.simulations), 4)
