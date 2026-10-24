@@ -194,6 +194,7 @@ class RuntimeAdapter(Adapter):
         # SDK metadata preparation and immediately before private loading.
         self.access.verify()
         admission.check(intent["id"], intent["deadlineMs"])
+        self.other_dex_conflicts(self.access.scope["tradingAccount"])
         observed = self.observe(plan["market"], state)
         current = observed["snapshot"]
         position = number(observed["position"], signed=True)
@@ -283,6 +284,7 @@ class RuntimeAdapter(Adapter):
             admission.check(intent["id"], intent["deadlineMs"], cleanup=True)
         def authorize():
             self.access.verify()
+            self.other_dex_conflicts(self.access.scope["tradingAccount"])
             check()
         exchange = self.exchange(admission.cleanup_deadline, before_sign=authorize)
         check()

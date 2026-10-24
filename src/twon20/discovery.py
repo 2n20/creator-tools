@@ -209,6 +209,9 @@ def parse_strikes(words) -> Strikes:
 
 
 def read_account(rpc: Rpc, venue: str, vault: str, core: str, block: dict):
+    rpc.prefetch_words([(venue, signature, []) for signature in ("tradingKeyVersion()", "RELEASE_NOTICE()", "RELEASE_ROUND()")]
+        + [(venue, signature, [vault]) for signature in ("books(address)", "keys(address)", "releases(address)", "strikes(address)", "cutsAllowedAt(address)")]
+        + [(vault, "uncoveredAssets()", [])], block)
     if rpc.words(venue, "tradingKeyVersion()", [], block, 1) != [TRADING_KEY_VERSION]:
         raise SetupError("UNSUPPORTED_CAPABILITY", "This approval contract's trading-key version is not 4. Setup stops. No key was created.")
     if rpc.words(venue, "RELEASE_NOTICE()", [], block, 1) != [RELEASE_NOTICE_SECONDS] or rpc.words(venue, "RELEASE_ROUND()", [], block, 1) != [RELEASE_ROUND_SECONDS]:
@@ -282,10 +285,16 @@ def discover(link: str, rpc: Rpc | None = None, now: int | None = None, anchor: 
     factory, controller, venue, implementation, asset = [address(contracts[name]) for name in ("VaultFactory", "PlatformController", "LocalVenue", "Vault", "MockUSDC")]
     if anchor.get("venue", {}).get("model") != "sdk" or address(anchor["venue"]["address"]) != venue:
         raise SetupError("UNSUPPORTED_DEPLOYMENT", "This release supports the reviewed SDK approval contracts only.")
+    rpc.prefetch([("eth_getCode", [contracts[name], fixed]) for name in ("VaultFactory", "PlatformController", "LocalVenue", "Vault", "MockUSDC")])
     for name in ("VaultFactory", "PlatformController", "LocalVenue", "Vault", "MockUSDC"):
         code = code_bytes(rpc.call("eth_getCode", [contracts[name], fixed]))
         if not code or "0x" + keccak(code).hex() != anchor["codeHashes"][name].lower():
             raise SetupError("CONTRACT_CODE_MISMATCH", "Contract code does not match the reviewed release. No setup data was accepted.")
+    rpc.prefetch_words([(factory, "settings()", []), (controller, "factory()", []), (factory, "venue()", []),
+        (factory, "asset()", []), (factory, "defaultImplementation()", []), (controller, "isVault(address)", [vault]),
+        (vault, "venue()", []), (vault, "asset()", []), (venue, "asset()", []), (venue, "operator()", []),
+        (vault, "owner()", []), (venue, "coreAccountOf(address)", [vault]),
+        (vault, "lifecycle()", []), (vault, "pendingRequestCount()", [])], fixed)
     read = lambda to, signature, args=(), count=1: rpc.words(to, signature, list(args), fixed, count)
     identity = lambda to, signature, args=(): decoded_address(read(to, signature, args)[0])
     if identity(factory, "settings()") != controller or identity(controller, "factory()") != factory or identity(factory, "venue()") != venue or identity(factory, "asset()") != asset or identity(factory, "defaultImplementation()") != implementation:
@@ -307,6 +316,7 @@ def discover(link: str, rpc: Rpc | None = None, now: int | None = None, anchor: 
     if key.nonce == UINT64_MAX:
         raise SetupError("NONCE_EXHAUSTED", "This vault cannot request another trading key.")
     if core != ZERO:
+        rpc.prefetch_words([(core, "vault()", []), (core, "venue()", []), (core, "asset()", [])], fixed)
         if not code_bytes(rpc.call("eth_getCode", [core, fixed])) or identity(core, "vault()") != vault or identity(core, "venue()") != venue or identity(core, "asset()") != asset:
             raise SetupError("ACCOUNT_BINDING_MISMATCH", "The trading account is not bound to this vault and approval contract.")
     found = Discovery(vault, network, canonical_link, anchor, owner, venue, core, key.requested, key.revocation_pending, key.nonce, number, block_hash, timestamp, book, key, release, strikes, cuts_allowed_at, lifecycle, pending_requests, uncovered)
@@ -332,6 +342,7 @@ def verify_current(found: Discovery, rpc: Rpc, now: int | None = None):
               (found.vault, "lifecycle()", [], [found.lifecycle]),
               (found.vault, "pendingRequestCount()", [], [found.pending_requests]),
               (found.vault, "uncoveredAssets()", [], [found.uncovered])]
+    rpc.prefetch_words([(target, signature, args) for target, signature, args, _ in checks], fixed)
     for target, signature, args, expected in checks:
         if rpc.words(target, signature, args, fixed, len(expected)) != expected:
             raise SetupError("STATE_CHANGED", "The vault state or approval nonce changed during verification. Try again before importing consent.")

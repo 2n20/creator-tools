@@ -115,6 +115,7 @@ class Adapter:
 
     def snapshot(self, market):
         self.access.verify()
+        self.other_dex_conflicts(self.access.scope["tradingAccount"])
         return self.market_snapshot(market)
 
     def market_snapshot(self, market):
@@ -167,7 +168,6 @@ class Adapter:
             if any(not isinstance(order, dict) or type(order.get("oid")) is not int for order in orders + front):
                 raise ValueError()
             orders = list({order["oid"]: order for order in front + orders}.values())
-            self.other_dex_conflicts(account)
             spot = self.read(self.info.spot_user_state, account)
             balances = spot["balances"]
             if not isinstance(balances, list) or len(balances) > 2000:

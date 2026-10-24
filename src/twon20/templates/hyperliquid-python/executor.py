@@ -235,7 +235,7 @@ class LimitChaser:
         market = (state["active"] or state["pending"])["market"]
         if self.worker.submit(token, lambda: self.adapter.observe(market, state)):
             self.job = (token, "observe", identity)
-            self.next_read = now_ms + 1000
+            self.next_read = now_ms + (10000 if self.open_risk_paused and state["child"] is None else 5000)
 
     def step(self, now_ms):
         self._collect(now_ms)
@@ -274,15 +274,17 @@ class LimitChaser:
             return
         if not self.admission.feed_ready.is_set() or not self.admission.feed_check():
             return
-        if self.snapshot is None or now_ms - self.observed_ms > 1000:
-            if now_ms >= self.next_read:
-                self._read(now_ms)
-            return
         if now_ms >= active["deadlineMs"]:
             if state["phase"] != "expired":
                 state["phase"] = "expired"
                 self.report("expired", active)
                 self.commit()
+            return
+        if state["phase"] in {"target_reached", "residual_dust"} and not self.open_risk_paused:
+            return
+        if self.snapshot is None or now_ms - self.observed_ms > 1000:
+            if now_ms >= self.next_read:
+                self._read(now_ms)
             return
         if number(state["position"], signed=True) == number(active["quantity"], signed=True):
             if state["phase"] != "target_reached":

@@ -17,6 +17,13 @@ LINK = f"https://2n20.org/vaults/{VAULT}?network=mainnet"
 
 
 class FakeRpc:
+    def prefetch(self, calls):
+        # Semantic fixtures remain per-call; transport batching is tested separately.
+        pass
+
+    def prefetch_words(self, reads, block):
+        pass
+
     def __init__(self):
         self.anchor = copy.deepcopy(trust_anchor("mainnet"))
         self.now = int(time.time())

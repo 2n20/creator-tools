@@ -103,6 +103,8 @@ Keep at least 0.01 HYPE in the trading account for Core transfer fees. Use clien
 
 Before an entry child, the runtime verifies current native cross leverage and the exchange’s side-specific trade capacity. Required margin includes initial margin at that setting, both taker fees and a fixed reserve. Missing or isolated settings hold new risk. It never changes the exchange setting. Read-only position observations do not repeat deployment discovery; the full authority check remains immediately before signing.
 
+Routine native account observations start at most once per five seconds. Account-wide builder-perp checks remain in the final entry and cancellation preflight. A resolved expired target stops idle account polling. A newer closed bar can nominate the current strategy target again within the original session; the same bar cannot renew an expired chase, and an unresolved child cannot be replaced.
+
 The session deadline is retained. Restarting the same command reconciles the same identities without renewing that deadline. New orders stop at expiry; exact owned-order cancellation has a separately retained 60-second cleanup grace. Stopping or a failed feed also inhibits new children and attempts bounded owned cleanup. It does not flatten positions automatically. Network requests cannot be recalled by a thread timeout. An unresolved child and account reservation remain durable after the cleanup budget ends.
 
 Use `--recover-only` with the same live command, state directory and explicit execution flag to authorize a fresh cleanup-only duration (`--max-seconds`). It never evaluates strategy or submits a new child, and can recover retained order plans even if strategy source has changed. Example:

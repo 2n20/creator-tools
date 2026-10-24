@@ -90,30 +90,66 @@ class Rpc:
         self.url = RPC_URLS[network]
         self._id = 0
         self._recovery_seconds = 20.0
+        self._prefetched = {}
 
     def call(self, method: str, params: list):
         if method not in self.METHODS:
             raise SetupError("READ_ONLY", "Only public read operations are supported.")
+        key = json.dumps([method, params], sort_keys=True)
+        if key in self._prefetched:
+            return self._prefetched[key]
         self._id += 1
         payload = {"jsonrpc": "2.0", "id": self._id, "method": method, "params": params}
+        return self._request(payload, {self._id})[self._id]
+
+    def prefetch(self, calls):
+        """Batch only canonical fixed-block reads within this Rpc instance."""
+        if not isinstance(calls, list) or not 1 <= len(calls) <= 48:
+            raise SetupError("READ_BOUND", "A public read batch exceeds its bound.")
+        pending = {}
+        for call in calls:
+            if not isinstance(call, (list, tuple)) or len(call) != 2:
+                raise SetupError("READ_ONLY", "Use explicit fixed-block public read pairs.")
+            method, params = call
+            if (method not in {"eth_call", "eth_getCode"} or not isinstance(params, list) or len(params) != 2
+                    or not isinstance(params[1], dict) or set(params[1]) != {"blockHash", "requireCanonical"}
+                    or params[1]["requireCanonical"] is not True or not isinstance(params[1]["blockHash"], str)
+                    or not re.fullmatch(r"0x[0-9a-fA-F]{64}", params[1]["blockHash"])):
+                raise SetupError("READ_ONLY", "Only canonical fixed-block calls and code reads may be prefetched.")
+            key = json.dumps([method, params], sort_keys=True)
+            if key not in self._prefetched:
+                pending[key] = (method, params)
+        if not pending:
+            return
+        if len(self._prefetched) + len(pending) > 128:
+            raise SetupError("READ_BOUND", "The fixed-block public read cache exceeds its bound.")
+        payload, keys = [], {}
+        for key, (method, params) in pending.items():
+            self._id += 1
+            keys[self._id] = key
+            payload.append({"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
+        results = self._request(payload, set(keys))
+        self._prefetched.update({key: results[identity] for identity, key in keys.items()})
+
+    def prefetch_words(self, reads, block):
+        self.prefetch([("eth_call", [{"to": target, "data": call_data(signature, args)}, block])
+                       for target, signature, args in reads])
+
+    def _request(self, payload, identities):
         failure = "A required public contract read failed. Resume the same setup; no transaction was submitted."
         for attempt in range(3):
             started = time.monotonic()
             try:
                 response = request_json(self.url, payload, timeout=15 if attempt == 0 else min(15, self._recovery_seconds))
-                if not isinstance(response, dict) or type(response.get("id")) is not int or response.get("id") != self._id or response.get("jsonrpc") != "2.0":
+                rows = response if isinstance(payload, list) else [response]
+                if (not isinstance(rows, list) or len(rows) != len(identities)
+                        or any(not isinstance(row, dict) or type(row.get("id")) is not int or row.get("jsonrpc") != "2.0" for row in rows)
+                        or len({row["id"] for row in rows}) != len(rows) or {row["id"] for row in rows} != identities):
                     raise SetupError("RPC_UNAVAILABLE", failure)
-                if "error" in response:
-                    error = response["error"]
-                    code = error.get("code") if isinstance(error, dict) else None
-                    message = str(error.get("message", "")).lower() if isinstance(error, dict) else ""
-                    transient = type(code) is int and (code in (-32603, -32005) or code == -32000 and any(phrase in message for phrase in ("header not found", "unknown block", "state not found", "state is not available", "missing trie node", "rate limit")))
-                    if transient and "result" not in response:
-                        raise TransientReadError("RPC_UNAVAILABLE", failure)
-                    raise SetupError("RPC_UNAVAILABLE", failure)
-                if "result" not in response:
-                    raise SetupError("RPC_UNAVAILABLE", failure)
-                return response["result"]
+                results = {}
+                for row in rows:
+                    results[row["id"]] = rpc_result(row, failure)
+                return results
             except TransientReadError as error:
                 delay = max((0.5, 1.5, 0)[attempt], error.retry_after)
                 if attempt == 2 or self._recovery_seconds - (time.monotonic() - started if attempt else 0) <= delay:
@@ -125,7 +161,7 @@ class Rpc:
             time.sleep(delay)
 
     def words(self, to: str, signature: str, arguments: list, block: dict, count: int) -> list[int]:
-        data = "0x" + keccak(text=signature)[:4].hex() + "".join(word(argument) for argument in arguments)
+        data = call_data(signature, arguments)
         result = self.call("eth_call", [{"to": to, "data": data}, block])
         if not isinstance(result, str) or not re.fullmatch(r"0x[0-9a-fA-F]{" + str(count * 64) + r"}", result):
             raise SetupError("CAPABILITY_UNAVAILABLE", "The deployment did not return the supported contract capabilities.")
@@ -133,6 +169,24 @@ class Rpc:
             return [int(result[offset:offset + 64], 16) for offset in range(2, len(result), 64)]
         except ValueError:
             raise SetupError("INVALID_CONTRACT_READ", "The public contract returned invalid evidence.") from None
+
+
+def rpc_result(response, failure):
+    if "error" in response:
+        error = response["error"]
+        code = error.get("code") if isinstance(error, dict) else None
+        message = str(error.get("message", "")).lower() if isinstance(error, dict) else ""
+        transient = type(code) is int and (code in (-32603, -32005) or code == -32000 and any(phrase in message for phrase in ("header not found", "unknown block", "state not found", "state is not available", "missing trie node", "rate limit")))
+        if transient and "result" not in response:
+            raise TransientReadError("RPC_UNAVAILABLE", failure)
+        raise SetupError("RPC_UNAVAILABLE", failure)
+    if "result" not in response:
+        raise SetupError("RPC_UNAVAILABLE", failure)
+    return response["result"]
+
+
+def call_data(signature, arguments):
+    return "0x" + keccak(text=signature)[:4].hex() + "".join(word(argument) for argument in arguments)
 
 
 def word(value) -> str:

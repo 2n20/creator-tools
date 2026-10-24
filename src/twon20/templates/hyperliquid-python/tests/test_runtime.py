@@ -201,6 +201,26 @@ class StrategyRuntimeTests(unittest.TestCase):
         restored.nominate(Target(Decimal("1.0"), "test"), bar(1, "200"), 2000)
         self.assertEqual(restored.state["execution"]["pending"], first)
 
+    def test_new_closed_bar_can_retry_expired_target_without_replaying_same_bar(self):
+        runtime=Runtime(config(),MemoryJournal(),mode="live",worker=ImmediateIO(),adapter=FakeAdapter(),
+                        reporter=Mock(),clock=lambda:1000,session_seconds=600)
+        target=Target(Decimal(1),"same")
+        runtime.nominate(target,bar(0),1000)
+        execution=runtime.state["execution"]
+        execution["active"],execution["pending"]=execution["pending"],None
+        execution["phase"]="expired"
+        original=execution["active"]["id"]
+        runtime.nominate(target,bar(0),2000)
+        self.assertIsNone(execution["pending"])
+        runtime.clock=lambda:61000
+        runtime.nominate(target,bar(1),61000)
+        pending=copy.deepcopy(execution["pending"])
+        self.assertNotEqual(pending["id"],original)
+        runtime.nominate(target,bar(1),61001)
+        self.assertEqual(execution["pending"],pending)
+        self.assertEqual(execution["active"]["id"],original)
+        self.assertEqual(runtime.state["sessionDeadlineMs"],601000)
+
     def test_cursor_strategy_and_target_saved_atomically(self):
         strategy = Mock()
         strategy.evaluate.return_value = (Target(Decimal(1), "test"), {"fraction": "1"})
@@ -346,6 +366,34 @@ class ChaserTests(unittest.TestCase):
         self.assertIsNotNone(self.state["child"])
         self.assertIsNotNone(self.state["child"]["oid"])
 
+    def test_observation_starts_are_spaced_while_stale_snapshots_cannot_submit(self):
+        self.state["active"],self.state["pending"]=self.state["pending"],None
+        original=self.adapter.observe
+        self.adapter.observe=Mock(side_effect=original)
+        self.chaser._read(1000);self.chaser._collect(1000)
+        self.chaser.step(2001);self.chaser.step(5999)
+        self.assertEqual(self.adapter.observe.call_count,1)
+        self.chaser.step(6000)
+        self.assertEqual(self.adapter.observe.call_count,2)
+        self.assertEqual(self.adapter.calls,[])
+
+    def test_failed_observation_retains_exposure_and_sends_no_order(self):
+        self.adapter.observe=Mock(side_effect=Stop("PUBLIC_API_UNAVAILABLE","Disposable"))
+        self.steps(3)
+        self.assertEqual(self.state["position"],"0")
+        self.assertIsNone(self.state["child"])
+        self.assertEqual(self.state["error"],"PUBLIC_API_UNAVAILABLE")
+        self.assertEqual(self.adapter.calls,[])
+
+    def test_expired_idle_target_does_not_poll_or_resubmit(self):
+        self.state["active"],self.state["pending"]=self.state["pending"],None
+        self.now=self.state["active"]["deadlineMs"]+1
+        with patch.object(self.adapter,"observe",side_effect=AssertionError("idle polling")):
+            self.chaser.step(self.now);self.chaser.step(self.now+1000)
+        self.assertEqual(self.state["phase"],"expired")
+        self.assertEqual(self.adapter.calls,[])
+        self.assertEqual(len([r for r in self.reports if r[0]=="expired"]),1)
+
     def test_child_identity_is_durable_before_submission(self):
         self.steps(3)
         submission = [value for value in self.saved if value["phase"] == "submission_uncertain"]
@@ -358,7 +406,7 @@ class ChaserTests(unittest.TestCase):
         self.adapter.fill_size = Decimal("0.1")
         self.adapter.delay_fill = True
         self.chaser.set_target(intent("new", "-1", "-1"))
-        self.steps(8, 500)
+        self.steps(16, 500)
         old_id = self.state["child"]["cloid"]
         self.assertEqual(len([call for call in self.adapter.calls if call[0] == "submit"]), 1)
         self.chaser = LimitChaser(self.state, lambda: self.saved.append(copy.deepcopy(self.state)), lambda *args: self.reports.append(args),
@@ -367,7 +415,7 @@ class ChaserTests(unittest.TestCase):
         self.steps(3, 500)
         self.assertEqual(self.state["child"]["cloid"], old_id)
         self.adapter.delay_fill = False
-        self.steps(8, 500)
+        self.steps(24, 500)
         submissions = [call[1] for call in self.adapter.calls if call[0] == "submit"]
         self.assertGreaterEqual(len(submissions), 2)
         self.assertTrue(submissions[1]["plan"]["reduceOnly"])
@@ -452,7 +500,7 @@ class ChaserTests(unittest.TestCase):
         self.open_child()
         self.adapter.fill_size = Decimal(self.state["child"]["plan"]["size"])
         self.adapter.canceled = True
-        self.steps(8, 500)
+        self.steps(16, 500)
         self.assertNotEqual(self.state["position"], "1")
         self.assertGreaterEqual(len([call for call in self.adapter.calls if call[0] == "submit"]), 2)
 
@@ -463,7 +511,7 @@ class ChaserTests(unittest.TestCase):
         self.open_child()
         self.adapter.fill_size = Decimal("0.1")
         self.adapter.canceled = True
-        self.steps(8, 500)
+        self.steps(16, 500)
         submissions = [call[1] for call in self.adapter.calls if call[0] == "submit"]
         self.assertTrue(submissions[0]["plan"]["reduceOnly"])
         self.assertEqual(submissions[0]["plan"]["size"], "0.10000")
@@ -595,6 +643,7 @@ class AdapterEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.now = 2000
         self.info = Mock()
+        self.info.perp_dexs.return_value = [None]
         self.adapter = RuntimeAdapter(SimpleNamespace(scope={"tradingAccount": "disposable"}, verify=Mock()), self.info)
         self.child = {"cloid": "0x" + "1" * 32, "startedMs": 1000, "basePosition": "0", "oid": 11,
                       "plan": {"market": "BTC", "buy": True, "size": "0.25", "price": "100", "reduceOnly": False,
@@ -672,6 +721,7 @@ class AdapterEvidenceTests(unittest.TestCase):
         self.adapter.access.verify.side_effect = Stop("ACCESS_UNVERIFIED", "Disposable revocation")
         self.assertTrue(self.adapter.observe("BTC", self.state)["evidence"]["complete"])
         self.adapter.access.verify.assert_not_called()
+        self.info.perp_dexs.assert_not_called()
         target = intent()
         admission = Admission(lambda: 2000)
         admission.feed_ready.set(); admission.generation = target["id"]
@@ -686,6 +736,16 @@ class AdapterEvidenceTests(unittest.TestCase):
         self.assertEqual(result, {"classification": "not_submitted", "reason": "ACCESS_UNVERIFIED"})
         self.adapter.access.verify.assert_called_once_with()
         exchange.order.assert_not_called()
+
+    def test_final_builder_scope_failure_prevents_an_entry(self):
+        self.info.perp_dexs.return_value=[]
+        self.assertTrue(self.adapter.observe("BTC",self.state)["evidence"]["complete"])
+        target=intent(); admission=Admission(lambda:2000)
+        admission.feed_ready.set();admission.generation=target["id"]
+        plan=plan_child(target,execution_state(1000),snapshot(),config()["execution"],1000)
+        self.adapter.exchange=Mock(side_effect=lambda expires,before_sign:before_sign())
+        result=self.adapter.submit_child({"plan":plan,"cloid":"0x"+"2"*32},execution_state(1000),target,admission)
+        self.assertEqual(result,{"classification":"not_submitted","reason":"ACCOUNT_SCOPE_UNVERIFIED"})
 
     def test_fresh_participation_caps_are_rechecked_before_signing(self):
         limits = config()["execution"]

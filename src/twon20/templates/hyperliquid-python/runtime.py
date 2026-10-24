@@ -159,7 +159,11 @@ class Runtime:
                     return
         fraction = str(target.fraction.normalize())
         normalized = fraction + ":" + str(budget.normalize())
-        if self.state["normalized"] == normalized and (not ready_to_increase or self.state.get("readyNormalized") == normalized):
+        execution = self.state["execution"]
+        active = execution["active"]
+        fresh_after_expiry = (ready_to_increase and active is not None and execution["child"] is None and execution["pending"] is None
+                              and execution["phase"] == "expired" and bar.open_ms > active["sourceBar"])
+        if self.state["normalized"] == normalized and not fresh_after_expiry and (not ready_to_increase or self.state.get("readyNormalized") == normalized):
             return
         if ready_to_increase:
             self.state["readyNormalized"] = normalized
@@ -252,6 +256,9 @@ class Runtime:
         read = self.release_read or {}
         policy = withdrawal_policy(read, now_ms // 1000)
         paused = not policy.ready_to_increase
+        if self.executor.open_risk_paused and not paused and isinstance(self.executor, LimitChaser):
+            self.executor.snapshot = None
+            self.executor.next_read = 0
         self.executor.open_risk_paused = paused
         execution = self.state["execution"]
         before = copy.deepcopy((self.state.get("release"), execution, self.state["reportSequence"], self.state["decisionSequence"], self.state["normalized"], self.state.get("readyNormalized")))
@@ -446,6 +453,7 @@ def run_command(args):
                 old = journal.read(name)
                 if old and old.get("phase") not in {"complete", "entry_rejected", "human_acknowledged"}:
                     raise Stop("OTHER_INTENT_UNRESOLVED", "Reconcile the existing smoke or collateral intent before starting a runtime.")
+        initial_release = access.pending_withdrawals() if guard and not args.recover_only else None
         if args.new_session or args.recover_only:
             rearm_session(journal, config, adapter, args.max_seconds, args.recover_only)
         worker = SerialIO()
@@ -454,6 +462,8 @@ def run_command(args):
         stack.callback(reporter.close)
         lifecycle = release_reader(access.scope) if args.mode == "live" and args.execute else None
         runtime = Runtime(config, journal, args.mode, worker, adapter, reporter, session_seconds=args.max_seconds if args.mode == "live" else None, recover_only=args.recover_only, lifecycle=lifecycle)
+        if initial_release is not None:
+            runtime.release_read = initial_release
         if args.feed == "public" and not args.recover_only:
             runtime.feed = HyperliquidCandleFeed(worker, config["market"], config["interval"], runtime.history)
             runtime.admission.feed_check = runtime.feed.admission_ready
