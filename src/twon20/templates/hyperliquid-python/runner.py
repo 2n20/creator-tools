@@ -9,7 +9,6 @@ import sys
 from configuration import DEFAULT_CONFIG, load_config
 from models import validate_market
 from risk import Bounds, Stop, entry_plan, number
-from strategy import paper
 
 
 def parser():
@@ -62,6 +61,7 @@ def run(args):
         from runtime import run_command
         return run_command(args)
     if args.command in (None, "paper"):
+        from strategy import paper
         if getattr(args, "public_data", False):
             from adapter import public_candles
             closes = public_candles(args.market)

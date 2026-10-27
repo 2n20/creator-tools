@@ -32,9 +32,11 @@ def main():
         validate_names(names)
         for required in ("skills/2n20-setup/SKILL.md", "skills/2n20-strategy/SKILL.md",
                          "skills/2n20-setup/references/step-2.md", "skills/2n20-setup/references/step-3.md",
+                         "skills/2n20-strategy/references/integrate.md",
                          "templates/hyperliquid-python/feed.py", "templates/hyperliquid-python/executor.py",
                          "templates/hyperliquid-python/runtime.py", "templates/hyperliquid-python/runner.py",
                          "templates/hyperliquid-python/configuration.py",
+                         "templates/hyperliquid-python/STRATEGY.md",
                          "templates/hyperliquid-python/WITHDRAWALS.md",
                          "templates/hyperliquid-python/withdrawal_sizing.py",
                          "templates/hyperliquid-python/tests/test_withdrawal_sizing.py",
@@ -57,6 +59,7 @@ def main():
         repeated = run("skill", "install", "--agent", "codex", "--json", cwd=working)
         assert all(item["status"] == "unchanged" for item in repeated["skills"])
         run("skill", "export", "--name", "2n20-strategy", "--directory", str(working / "strategy-skill"), cwd=working)
+        assert (working / "strategy-skill/references/integrate.md").read_bytes() == (working / ".agents/skills/2n20-strategy/references/integrate.md").read_bytes()
         result = run("init", str(working / "project"), "--template", "hyperliquid-python", "--json", cwd=working)
         assert result["keysCreated"] is False and result["dependenciesInstalled"] is False
         assert not list((working / "project").rglob("*.key"))

@@ -45,7 +45,15 @@ The SHA-pinned workflow builds/tests artifacts, then gives OIDC permission only 
 
 Only then update website installation instructions to the published version and deploy through the application's established process. Retire an obsolete publisher only after the new release is verified. Do not move older tags or delete historical release evidence. TestPyPI is optional and was not used for the initial public-source transition. Record skipped checks separately from passing verification.
 
-## 0.6.6
+## 0.7.0
+
+Adds an agent-guided assessment, adaptation and verification path for existing strategies, a manual integration guide, and a generated `STRATEGY.md`. New projects and existing integrations complete setup after a read-only connection check with trading stopped. The copied Step 2 and Step 3 approval/connection instructions remain unchanged.
+
+The starter's configuration check and runtime now use `strategy.py:build_strategy(parameters)`. Creators replace their signal implementation and its public parameters without editing the runner. The default remains the educational band-breakout example. Custom factory construction must remain local and free of signing or network calls. Existing generated projects need reviewed updates to `configuration.py`, `runtime.py`, `runner.py` and the factory in `strategy.py`; keep custom signal logic and journals. Strategy source/configuration changes still require exposure reconciliation and a reviewed migration before resuming retained live state.
+
+An explicit `iocAfterSeconds: 0` permits capped IOC execution from the first child. The default stays null, with post-only execution. Slippage, size, account, withdrawal and deadline checks remain. IOC can partially fill or receive no fill. This setting does not authorize live execution. The release includes the uncached header batching below, which was prepared as an unpublished 0.6.6 candidate.
+
+## 0.6.6 (unpublished candidate)
 
 Independent chain, deployment-receipt and header reads use uncached read-only batches. Response IDs remain exact and complete; canonicality, freshness, code, owner, key, lifecycle and scope checks are unchanged. This further reduces serial round trips in final authority checks. Latest headers are never cached. Template strategy, execution configuration and limits are unchanged from 0.6.5.
 

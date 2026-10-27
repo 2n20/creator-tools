@@ -1,13 +1,23 @@
 """Public strategy configuration shared by checks and runtime composition."""
 from pathlib import Path
+import copy
 import json
 import re
 
 from models import INTERVALS
 from risk import Stop, number
-from strategy import BandBreakout
+from strategy import build_strategy
 
 DEFAULT_CONFIG = "config.public.example.json"
+
+
+def configured_strategy(parameters):
+    """Keep creator parameter parsing from mutating the retained public policy."""
+    instance = build_strategy(copy.deepcopy(parameters))
+    warmup = getattr(instance, "warmup_bars", None)
+    if type(warmup) is not int or not 1 <= warmup <= 128 or not callable(getattr(instance, "evaluate", None)):
+        raise Stop("STRATEGY_INTERFACE_INVALID", "Return a strategy with warmup_bars from 1 to 128 and a callable evaluate method.")
+    return instance
 
 
 def load_config(path):
@@ -27,9 +37,9 @@ def load_config(path):
             raise ValueError()
         if not re.fullmatch(r"[A-Z][A-Z0-9]{0,19}", config["market"]) or config["interval"] not in INTERVALS:
             raise ValueError()
-        if set(config["strategy"]) != {"window", "multiplier"}:
+        if not isinstance(config["strategy"], dict):
             raise ValueError()
-        BandBreakout(**config["strategy"])
+        configured_strategy(config["strategy"])
         limits = config["execution"]
         if set(limits) != {"capitalMultiple", "targetNotional", "childNotional", "slippageBps", "chaseSeconds", "maxChildren", "requoteSeconds", "iocAfterSeconds", "depthFraction", "dailyVolumeFraction"}:
             raise ValueError()
@@ -43,7 +53,7 @@ def load_config(path):
         for key, low, high in (("slippageBps", 1, 500), ("chaseSeconds", 5, 3600), ("maxChildren", 1, 100), ("requoteSeconds", 1, 60)):
             if type(limits[key]) is not int or not low <= limits[key] <= high:
                 raise ValueError()
-        if limits["iocAfterSeconds"] is not None and (type(limits["iocAfterSeconds"]) is not int or not 1 <= limits["iocAfterSeconds"] < limits["chaseSeconds"]):
+        if limits["iocAfterSeconds"] is not None and (type(limits["iocAfterSeconds"]) is not int or not 0 <= limits["iocAfterSeconds"] < limits["chaseSeconds"]):
             raise ValueError()
         if set(config["reporting"]) != {"telegram"} or type(config["reporting"]["telegram"]) is not bool:
             raise ValueError()

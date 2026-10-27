@@ -43,6 +43,8 @@ Init refuses an existing directory, including an empty one. It writes the review
 
 For an existing project, inspect its safe source and public configuration to identify the strategy's account and secret-loader interfaces. Do not replace the project with a starter or claim arbitrary bot support. Keep changes scoped and reviewable. Both entry paths continue through the same CLI onboarding below.
 
+If the project still targets another exchange or lacks operating code, explain the integration work before claiming a connection. Use the bundled `2n20-strategy` skill and its `references/integrate.md` flow when the creator requests adaptation. It assesses the existing project, preserves signal and sizing intent, and implements a reviewed adapter or the missing starter modules. Reuse the resulting project here. A working integration needs no conversion step. Setup still ends with a read-only connection check and trading stopped.
+
 Run from the strategy's working directory:
 
 ```sh

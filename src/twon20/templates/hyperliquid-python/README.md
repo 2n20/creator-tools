@@ -4,6 +4,8 @@ A continuous official-SDK candle feed, a replaceable educational band-breakout s
 
 You operate this software on your own computer or server. Python 3.10 or later, an existing 2n20 vault and a place to run the software are prerequisites for connecting the account. Deterministic paper can run before creating or funding a vault.
 
+Generating and connecting this project leaves trading stopped. Start with [Write your strategy](STRATEGY.md) for the signal interface and an edit-and-check workflow. If you already have a bot, use the [existing-project integration guide](https://github.com/2n20/creator-tools/blob/main/docs/strategy-integration.md) to choose which modules to reuse.
+
 ## Install
 
 This project was exported by `2n20 init`. Keep the CLI installed at the released version that generated it. The official SDK is an additional runner dependency, excluded from the CLI's base dependencies. The full reviewed third-party graph is pinned and hashed in `requirements-runner.txt`; registry timestamps and hashes are in `dependency-review.json`.
@@ -27,7 +29,7 @@ The example strategy computes a rolling mean and sample standard deviation. A cl
 | `configuration.py` | Public configuration shared by connection checks and the runtime |
 | `models.py` | `Bar`, normalized `Target`, market identity checks and small Feed/Strategy/Executor interfaces |
 | `feed.py` | Fixture or official SDK candle feed |
-| `strategy.py` | `BandBreakout.evaluate(bars, checkpoint)` and the legacy finite paper example |
+| `strategy.py` | `build_strategy(parameters)`, your strategy's `evaluate(bars, checkpoint)`, and the finite paper example |
 | `runtime.py` | Strategy checkpoint, withdrawal coordination and capped capital-based sizing |
 | `withdrawal_sizing.py` | Pure pending-withdrawal deduction example for your own executor |
 | `executor.py` | Paper fills and incremental `LimitChaser` |
@@ -37,7 +39,9 @@ The example strategy computes a rolling mean and sample standard deviation. A cl
 | `reporting.py` | Local JSON output and optional Telegram |
 | `adapter.py`, `risk.py`, `execution.py` | Existing SDK/account boundary and separate finite diagnostics |
 
-To replace the strategy, change `BandBreakout` in `strategy.py` and its construction in `runtime.py`. Its only inputs are validated bars and its prior public checkpoint. Return `(Target(Decimal("1"), "my_reason"), checkpoint)` for a normalized long target, fraction `-1` for short, or `0` for flat. Return `None` as the target to retain the current intent. Fractions between -1 and 1 scale the capital-based target within the configured notional ceiling. No SDK client, order ID or signer belongs in the strategy. Use the same constructor in paper and live mode. A custom feed must return Bar/BarBatch observations for the configured market and interval, with the same validation and continuity rules. Other sampling methods require an explicit adaptation of that contract. It implements nonblocking `poll(now_ms)`, `healthy`, `done` and `close`; a custom executor implements `recover`, `set_target`, `step` and `shutdown`. Replace those constructors in the composition, keeping all effect and durability boundaries intact. This starter includes no backtester, optimizer or hosted service.
+To replace the strategy, edit `build_strategy(parameters)` and your signal class in `strategy.py`, then put its public parameters in the configuration's `strategy` object. Both configuration checks and the runtime use that factory. Keep construction free of network calls and signing. The runner, feed and executor need no edits for a strategy that fits the existing bar/target interface. See [the strategy contract](STRATEGY.md#strategy-contract) for targets, checkpoints and sizing.
+
+A custom feed must return Bar/BarBatch observations for the configured market and interval, with the same validation and continuity rules. Other sampling methods require an adaptation of that contract. It implements nonblocking `poll(now_ms)`, `healthy`, `done` and `close`; a custom executor implements `recover`, `set_target`, `step` and `shutdown`. Replace those constructors in the composition, keeping effect and durability checks intact. This starter includes no backtester, optimizer or hosted service.
 
 ## Use your own executor
 
@@ -53,7 +57,7 @@ In live mode, `capitalMultiple` scales remaining investor capital after estimate
 
 `childNotional`, `maxChildren`, `chaseSeconds`, `requoteSeconds` and `slippageBps` bound the chase. These limits are separate from the diagnostic smoke limits of 10 to 100 USDC. Changing markets does not require editing the feed, strategy or executor. Retained state belongs to its original configuration; do not reuse another market's journal or delete it to force a switch. Existing generated projects require deliberate source/configuration review; a CLI upgrade does not rewrite them.
 
-Children start post-only (`Alo`). Set `iocAfterSeconds` to an explicit time before `chaseSeconds` to allow later IOC urgency; null keeps all children maker-first. Optional `depthFraction` caps a child to a fraction of the selected best book level's notional. Optional `dailyVolumeFraction` caps it to that fraction of reported 24-hour notional volume, prorated over `requoteSeconds`. These caps can only reduce size. A cap below the venue minimum produces `residual_dust`, not a raised budget. Arrival-price bounds are hard admission checks. Partial fills retain their exact quantity and VWAP. A side flip first reduces the owned position and verifies zero before opening the other side. Dust is never reported as flat.
+The default `iocAfterSeconds: null` keeps children post-only (`Alo`). Set a positive time before `chaseSeconds` to allow later immediate-or-cancel (`Ioc`) orders, or set `0` to use capped IOC from the first child. IOC attempts execution within the original slippage bound and cancels any unfilled remainder; it can partially fill or receive no fill. Review this execution choice before a live start. Optional `depthFraction` caps a child to a fraction of the selected best book level's notional. Optional `dailyVolumeFraction` caps it to that fraction of reported 24-hour notional volume, prorated over `requoteSeconds`. These caps can only reduce size. A cap below the venue minimum produces `residual_dust`, not a raised budget. Arrival-price bounds are hard admission checks. Partial fills retain their exact quantity and VWAP. A side flip first reduces the owned position and verifies zero before opening the other side. Dust is never reported as flat.
 
 ## Optional developer simulation
 

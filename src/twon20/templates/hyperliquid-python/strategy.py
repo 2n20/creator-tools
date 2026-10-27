@@ -1,5 +1,18 @@
-"""Educational moving-average crossover. No wallets, APIs or order submission."""
+"""Put signal logic and its parameter validation here. Return targets, not orders."""
 from decimal import Decimal
+
+
+def build_strategy(parameters):
+    """Select your strategy here; check and run use this same factory.
+
+    The returned object implements models.Strategy. Construction and evaluate
+    must avoid network calls and signing. Keep state in the public checkpoint.
+    Replace this factory and the strategy below to use your own parameters.
+    """
+    from risk import Stop
+    if not isinstance(parameters, dict) or set(parameters) != {"window", "multiplier"}:
+        raise Stop("STRATEGY_CONFIG_INVALID", "The example strategy requires window and multiplier.")
+    return BandBreakout(**parameters)
 
 
 def crossover(closes, fast=3, slow=5):

@@ -18,7 +18,7 @@ from .files import Output, secure_directory
 TEMPLATE = "hyperliquid-python"
 PUBLIC_SOURCE = "https://github.com/2n20/creator-tools"
 MANIFEST = "2n20-template.public.json"
-REQUIRED_ASSETS = frozenset({"README.md", "runner.py", "strategy.py", "adapter.py", "risk.py", "journal.py", "execution.py", "models.py", "configuration.py", "feed.py", "executor.py", "runtime.py", "runtime_io.py", "runtime_adapter.py", "runtime_journal.py", "reporting.py", "requirements-runner.txt", "config.public.example.json", "fixture.candles.public.json", "dependency-review.json"})
+REQUIRED_ASSETS = frozenset({"README.md", "STRATEGY.md", "runner.py", "strategy.py", "adapter.py", "risk.py", "journal.py", "execution.py", "models.py", "configuration.py", "feed.py", "executor.py", "runtime.py", "runtime_io.py", "runtime_adapter.py", "runtime_journal.py", "reporting.py", "requirements-runner.txt", "config.public.example.json", "fixture.candles.public.json", "dependency-review.json"})
 
 
 def approved_asset(name):

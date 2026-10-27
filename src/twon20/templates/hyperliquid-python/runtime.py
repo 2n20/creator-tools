@@ -6,7 +6,7 @@ from pathlib import Path
 import signal
 import time
 
-from configuration import load_config
+from configuration import configured_strategy, load_config
 from executor import LimitChaser, PaperExecutor, execution_state
 from feed import FixtureFeed, HyperliquidCandleFeed
 from models import Bar, INTERVALS, Target, validate_market
@@ -14,7 +14,6 @@ from reporting import ConsoleReporter, TelegramReporter
 from risk import Stop, number
 from runtime_io import Admission, SerialIO
 from runtime_journal import MAX_HISTORY, MAX_REPORTS, RuntimeJournal
-from strategy import BandBreakout
 from twon20.withdrawals import withdrawal_policy
 
 RELEASE_POLL_MS = 5000
@@ -72,7 +71,7 @@ class Runtime:
         self.clock = clock or (lambda: int(time.time() * 1000))
         self.worker = worker or SerialIO()
         self.reporter = reporter or ConsoleReporter()
-        self.strategy = strategy or BandBreakout(**config["strategy"])
+        self.strategy = strategy if strategy is not None else configured_strategy(config["strategy"])
         self.policy = fingerprint(config)
         now = self.clock()
         old = journal.read_runtime()

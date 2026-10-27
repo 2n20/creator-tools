@@ -4,9 +4,17 @@ Connect your strategy software to a [2n20](https://2n20.org) vault on Hyperliqui
 
 Give your coding agent the `2n20-setup` skill, or run the `2n20` CLI yourself. Run setup on the computer or server that will operate your strategy. You receive an approval link to review with your creator wallet. Your private trading key stays on the strategy machine.
 
-After approval, resume the same setup directory to verify trading access and get your strategy settings. You define and operate the strategy. The starter includes Hyperliquid candles, an educational band-breakout strategy, a replaceable limit chaser and execution reporting. It makes no profitability claim. The Python import is `twon20`.
+After approval, resume the same setup directory to verify trading access and get your strategy settings. Setup ends with your project configured, connected and stopped. You decide when to start trading. The starter includes Hyperliquid candles, an educational band-breakout strategy, a replaceable limit chaser and execution reporting. It makes no profitability claim. The Python import is `twon20`.
 
-Release 0.6.6 supports trading-key version 4 and includes the withdrawal coordination described below. Version 0.6.0 also supports that deployment; versions through 0.5.2 target the previous deployment. Existing generated projects need regeneration or adaptation; upgrading the CLI does not overwrite them.
+| Your starting point | Next action |
+| --- | --- |
+| No strategy project | [Generate the starter](docs/strategy-integration.md#start-a-new-strategy), then write your decisions in `strategy.py`. |
+| Existing strategy, bot or backtest | [Give your agent the integration request](docs/strategy-integration.md#bring-an-existing-strategy) to assess and adapt this project. |
+| Prefer to integrate yourself | Follow the [manual path and module map](docs/strategy-integration.md#integrate-manually). |
+
+The agent flow preserves existing strategy rules and project structure. It identifies exchange, data, sizing and recovery gaps before adapting them. The starter supports one native USDC perpetual in standard account mode; other portfolios need their own compatibility assessment.
+
+Release 0.7.0 adds the guided strategy integration flow and a single strategy factory in the starter. It supports trading-key version 4 and the withdrawal coordination described below. Version 0.6.0 also supports that deployment; versions through 0.5.2 target the previous deployment. Review changes before updating an existing generated project; upgrading the CLI does not overwrite it.
 
 ## Install
 
@@ -15,7 +23,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.6.6'
+python -m pip --isolated install '2n20==0.7.0'
 2n20 --version
 ```
 
@@ -55,9 +63,11 @@ For a new starter, run `2n20 init` first, then enter the generated project. From
 
 Use `cursor`, `claude` or `hermes` instead of `codex` for those agents. Codex installs into the project's `.agents/skills`, Cursor into `.cursor/skills`, and Claude Code into `.claude/skills`. Hermes uses `~/.hermes/skills` or the configured `HERMES_HOME`. Reload the agent's skills after installation. Identical copies stay unchanged; conflicting local copies are preserved for your review.
 
-Use `2n20-strategy` to adapt an existing backtest or bot, or develop the starter before a vault exists. The guide keeps your signals, sizing and research tools, and helps add only the operating modules you need. For example:
+Use `2n20-strategy` to adapt an existing backtest or bot, or develop the starter before a vault exists. The guide assesses compatibility, explains the change plan, implements authorized adaptations and verifies them without trading. It preserves your signals, sizing and research tools and records the result in a local `STRATEGY.md`.
 
-> Use 2n20-strategy to adapt this project's backtested strategy for Hyperliquid and a future 2n20 vault. Keep its signals and sizing. Use the starter feed and limit chaser where operating code is missing. Preserve my tests and help configure the project.
+> Use 2n20-strategy to adapt this project for Hyperliquid and a 2n20 vault. Assess its markets, data, signals, sizing, execution and recovery. Preserve my strategy rules, risk choices and project structure. Explain the implementation plan, then make the changes covered by this request. Ask about choices that change trading behavior or risk. Verify with existing tests, disposable fixtures and read-only checks. Record the result in STRATEGY.md and leave trading stopped.
+
+For a new strategy, ask the agent to work in the generated starter and show you `strategy.py`, its `build_strategy(parameters)` factory and the public configuration. For an existing bot, keep its working feed and executor where compatible. The [integration guide](docs/strategy-integration.md) explains both paths, the target interface and manual integration. A read-only connection check does not establish live execution quality.
 
 Use `2n20-setup` when you have a vault. Give your agent the vault URL, project location and machine. It uses the CLI through authorized terminal access; you open the approval link and use your wallet. A project prepared before vault creation is the same existing project in Step 2.
 

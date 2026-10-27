@@ -31,7 +31,7 @@ class SkillInstallTests(unittest.TestCase):
         self.assertFalse(project.exists())
         init_project(project)
         result = install_skills("codex", project)
-        self.assertEqual(len(result["files"]), 4)
+        self.assertEqual(len(result["files"]), 5)
         self.assertTrue((project / "runner.py").is_file())
 
     def test_agent_directories_idempotence_and_unrelated_files(self):
@@ -42,7 +42,7 @@ class SkillInstallTests(unittest.TestCase):
                 (unrelated / "SKILL.md").write_text("custom")
                 result = install_skills(agent, self.root)
                 self.assertEqual(result["version"], __version__)
-                self.assertEqual(len(result["files"]), 4)
+                self.assertEqual(len(result["files"]), 5)
                 for path in result["files"]:
                     path = Path(path)
                     self.assertEqual(path.stat().st_mode & 0o777, 0o600)
@@ -87,7 +87,8 @@ class SkillInstallTests(unittest.TestCase):
     def test_hermes_home_is_mocked_and_project_is_rejected(self):
         with patch.dict(os.environ, {}, clear=True), patch("twon20.skill_export.Path.home", return_value=self.root):
             result = install_skills("hermes", name="2n20-strategy")
-        self.assertEqual(result["files"], [str(self.root / ".hermes/skills/2n20-strategy/SKILL.md")])
+        self.assertEqual(result["files"], [str(self.root / ".hermes/skills/2n20-strategy/SKILL.md"),
+                                          str(self.root / ".hermes/skills/2n20-strategy/references/integrate.md")])
         with patch.dict(os.environ, {"HERMES_HOME": str(self.root / "profile")}):
             result = install_skills("hermes")
         self.assertTrue(all(path.startswith(str(self.root / "profile/skills")) for path in result["files"]))
@@ -100,7 +101,7 @@ class SkillInstallTests(unittest.TestCase):
         with patch("twon20.skill_export.Path.cwd", return_value=self.root), patch("twon20.cli.discover", side_effect=AssertionError("network discovery")), contextlib.redirect_stdout(output):
             code = main(["skill", "install", "--agent", "codex", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(len(json.loads(output.getvalue())["files"]), 4)
+        self.assertEqual(len(json.loads(output.getvalue())["files"]), 5)
 
     def test_cli_named_export_and_install(self):
         for args in (["skill", "export", "--name", "2n20-strategy", "--directory", str(self.root / "export"), "--json"],
@@ -108,7 +109,28 @@ class SkillInstallTests(unittest.TestCase):
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 self.assertEqual(main(args), 0)
-            self.assertEqual(len(json.loads(output.getvalue())["files"]), 1 if args[1] == "export" else 3)
+            self.assertEqual(len(json.loads(output.getvalue())["files"]), 2 if args[1] == "export" else 3)
+
+    def test_strategy_reference_survives_export_install_and_conflict(self):
+        with patch("twon20.cli.discover", side_effect=AssertionError("network discovery")), \
+             patch("subprocess.run", side_effect=AssertionError("execution")), \
+             patch("eth_account.Account.create", side_effect=AssertionError("key creation")):
+            export_skill(self.root / "portable", "2n20-strategy")
+            expected = (self.root / "portable/references/integrate.md").read_bytes()
+            skill = (self.root / "portable/SKILL.md").read_text()
+            self.assertIn("(references/integrate.md)", skill)
+            for agent, folder in (("codex", ".agents"), ("cursor", ".cursor"), ("claude", ".claude")):
+                with self.subTest(agent=agent):
+                    install_skills(agent, self.root, "2n20-strategy")
+                    target = self.root / folder / "skills/2n20-strategy/references/integrate.md"
+                    self.assertEqual(target.read_bytes(), expected)
+                    self.assertEqual(install_skills(agent, self.root, "2n20-strategy")["skills"][0]["status"], "unchanged")
+                    target.write_text("Creator's integration notes")
+                    with self.assertRaises(SetupError) as caught:
+                        install_skills(agent, self.root)
+                    self.assertEqual(caught.exception.code, "SKILL_CONFLICT")
+                    self.assertEqual(target.read_text(), "Creator's integration notes")
+                    self.assertFalse((self.root / folder / "skills/2n20-setup").exists())
 
     def test_nested_reference_assets_export_and_install(self):
         bundle = {"SKILL.md": b"skill", "references/guide.md": b"reference"}
