@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
+import twon20
 from configuration import configured_strategy, load_config
 from executor import execution_state, plan_child
 from risk import Stop
@@ -68,13 +69,15 @@ class StrategyEntrypointTests(unittest.TestCase):
             (project / "custom.public.json").write_text(json.dumps(settings))
             command = [sys.executable, "runner.py", "run", "--mode", "paper", "--feed", "fixture",
                        "--config", "custom.public.json", "--state-directory", ".runtime-custom", "--max-bars", "2"]
-            first = subprocess.run(command, cwd=project, capture_output=True, text=True, timeout=30)
+            environment = {"PYTHONPATH": str(Path(twon20.__file__).resolve().parents[1]),
+                           "PYTHONDONTWRITEBYTECODE": "1"}
+            first = subprocess.run(command, cwd=project, env=environment, capture_output=True, text=True, timeout=30)
             self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
             state_path = project / ".runtime-custom/runtime.public.json"
             before = json.loads(state_path.read_text())
             self.assertEqual(before["strategy"]["evaluations"], 2)
             self.assertEqual(before["execution"]["active"]["reason"], "custom_threshold")
-            second = subprocess.run(command, cwd=project, capture_output=True, text=True, timeout=30)
+            second = subprocess.run(command, cwd=project, env=environment, capture_output=True, text=True, timeout=30)
             self.assertEqual(second.returncode, 0, second.stderr + second.stdout)
             after = json.loads(state_path.read_text())
             self.assertGreater(after["strategy"]["evaluations"], before["strategy"]["evaluations"])
