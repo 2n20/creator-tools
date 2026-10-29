@@ -45,9 +45,11 @@ The SHA-pinned workflow builds/tests artifacts, then gives OIDC permission only 
 
 Only then update website installation instructions to the published version and deploy through the application's established process. Retire an obsolete publisher only after the new release is verified. Do not move older tags or delete historical release evidence. TestPyPI is optional and was not used for the initial public-source transition. Record skipped checks separately from passing verification.
 
-## 0.7.1 (prepared, unpublished)
+## 0.7.1
 
 The starter classifies exceptions during order preparation as definitely not submitted, including CLI public-read failures that do not use the runner's `Stop` type. Client-order-ID construction is part of that preparation. An exception after entering the SDK order call remains ambiguous and requires public reconciliation. Existing ambiguous journals are preserved; this change does not prove whether an earlier attempt was submitted. No live restart, renewed session allowance or order is implied.
+
+Published October 29, 2026 from immutable tag `creator-cli-v0.7.1`, commit `a072aa336ff6601e177949084342664783982fc4`. [CI](https://github.com/2n20/creator-tools/actions/runs/40856124115) passed on Python 3.10, 3.12 and 3.13, and [publishing](https://github.com/2n20/creator-tools/actions/runs/40856174086) passed. The downloaded wheel SHA-256 is `d38040ec0b9175b07a6cf799169f15041530dedf4e334ed6c0c29ea3c98fed50`; the source-package SHA-256 is `a464ceeb2960548f05059b06eb5d568a157ffaeb12027be9bf023ca54704a121`. Both match the two reproducible builds. Publisher identity, certificate source/tag/commit, subjects and envelope signatures match. Certificate trust chain, trusted signing time and transparency inclusion were not independently verified. Verification passed 169 CLI tests, 166 starter tests, and installed wheel/source-package checks. Existing generated projects need a reviewed update to `runtime_adapter.py`; upgrading the CLI does not overwrite a project.
 
 ## 0.7.0
 
