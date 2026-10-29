@@ -77,6 +77,27 @@ class SubmissionTimingTests(unittest.TestCase):
         self.access.signer.assert_not_called()
         self.sdk.order.assert_not_called()
 
+    def test_cli_read_failure_before_order_is_definitely_not_submitted(self):
+        from twon20.errors import SetupError
+        for failure in [SetupError('RPC_UNAVAILABLE', 'private-provider-marker'), RuntimeError('private-provider-marker')]:
+            with self.subTest(error=type(failure).__name__):
+                self.access.verify.side_effect = failure
+                result = self.submit()
+                self.assertEqual(result, {'classification': 'not_submitted', 'reason': 'ORDER_PREPARATION_UNAVAILABLE'})
+                self.access.signer.assert_not_called()
+                self.sdk.order.assert_not_called()
+
+    def test_post_signer_pre_order_read_failure_is_not_submitted(self):
+        self.adapter._withdrawal_check = Mock(side_effect=[None, RuntimeError('private-provider-marker')])
+        self.assertEqual(self.submit(), {'classification': 'not_submitted', 'reason': 'ORDER_PREPARATION_UNAVAILABLE'})
+        self.access.signer.assert_called_once()
+        self.sdk.order.assert_not_called()
+
+    def test_order_transport_failure_remains_ambiguous(self):
+        self.sdk.order.side_effect = TimeoutError('private-provider-marker')
+        self.assertEqual(self.submit(), {'classification': 'ambiguous'})
+        self.sdk.order.assert_called_once()
+
     def test_feed_failure_during_final_check_prevents_signing(self):
         self.changed = self.admission.feed_ready.clear
         self.assertEqual(self.submit()["reason"], "FEED_NOT_READY")

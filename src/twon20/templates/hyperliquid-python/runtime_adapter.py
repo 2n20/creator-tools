@@ -240,12 +240,17 @@ class RuntimeAdapter(Adapter):
             exchange = self.exchange(intent["deadlineMs"], before_sign=lambda: self._preflight(plan, state, intent, admission))
             self._withdrawal_check(plan, intent)
             admission.check(intent["id"], intent["deadlineMs"])
+            _, _, Cloid = sdk_types()
+            cloid = Cloid.from_str(child["cloid"])
         except Stop as error:
             return {"classification": "not_submitted", "reason": error.code}
-        _, _, Cloid = sdk_types()
+        except Exception:
+            # The SDK order call has not been entered. Preserve that fact even
+            # when a CLI/public-read exception is not the runner's Stop type.
+            return {"classification": "not_submitted", "reason": "ORDER_PREPARATION_UNAVAILABLE"}
         try:
             response = exchange.order(plan["market"], plan["buy"], float(number(plan["size"])), float(number(plan["price"])),
-                                      {"limit": {"tif": plan["tif"]}}, reduce_only=plan["reduceOnly"], cloid=Cloid.from_str(child["cloid"]))
+                                      {"limit": {"tif": plan["tif"]}}, reduce_only=plan["reduceOnly"], cloid=cloid)
         except Exception:
             return {"classification": "ambiguous"}
         # Only an unambiguous error-only response proves rejection. Malformed

@@ -45,6 +45,10 @@ The SHA-pinned workflow builds/tests artifacts, then gives OIDC permission only 
 
 Only then update website installation instructions to the published version and deploy through the application's established process. Retire an obsolete publisher only after the new release is verified. Do not move older tags or delete historical release evidence. TestPyPI is optional and was not used for the initial public-source transition. Record skipped checks separately from passing verification.
 
+## 0.7.1 (prepared, unpublished)
+
+The starter classifies exceptions during order preparation as definitely not submitted, including CLI public-read failures that do not use the runner's `Stop` type. Client-order-ID construction is part of that preparation. An exception after entering the SDK order call remains ambiguous and requires public reconciliation. Existing ambiguous journals are preserved; this change does not prove whether an earlier attempt was submitted. No live restart, renewed session allowance or order is implied.
+
 ## 0.7.0
 
 Adds an agent-guided assessment, adaptation and verification path for existing strategies, a manual integration guide, and a generated `STRATEGY.md`. New projects and existing integrations complete setup after a read-only connection check with trading stopped. The copied Step 2 and Step 3 approval/connection instructions remain unchanged.

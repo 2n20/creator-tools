@@ -14,7 +14,7 @@ After approval, resume the same setup directory to verify trading access and get
 
 The agent flow preserves existing strategy rules and project structure. It identifies exchange, data, sizing and recovery gaps before adapting them. The starter supports one native USDC perpetual in standard account mode; other portfolios need their own compatibility assessment.
 
-Release 0.7.0 adds the guided strategy integration flow and a single strategy factory in the starter. It supports trading-key version 4 and the withdrawal coordination described below. Version 0.6.0 also supports that deployment; versions through 0.5.2 target the previous deployment. Review changes before updating an existing generated project; upgrading the CLI does not overwrite it.
+Release 0.7.1 fixes recovery after an order-preparation failure. Release 0.7.0 added the guided strategy integration flow and a single strategy factory in the starter. Both support trading-key version 4 and the withdrawal coordination described below. Version 0.6.0 also supports that deployment; versions through 0.5.2 target the previous deployment. Review changes before updating an existing generated project; upgrading the CLI does not overwrite it.
 
 ## Install
 
@@ -23,7 +23,7 @@ Use Python 3.10 or later on your strategy computer or server:
 ```sh
 python3 -m venv .venv-2n20
 source .venv-2n20/bin/activate
-python -m pip --isolated install '2n20==0.7.0'
+python -m pip --isolated install '2n20==0.7.1'
 2n20 --version
 ```
 
